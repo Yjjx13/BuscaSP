@@ -1,0 +1,26 @@
+<view class="page">
+  <view class="card">
+    <view class="label">商品图片 <text>必填</text></view>
+    <view class="photos"><view wx:for="{{images}}" wx:key="*this" class="photo"><image src="{{item}}" mode="aspectFill"/></view><view wx:if="{{images.length<9}}" class="add" bindtap="chooseImage">＋</view></view>
+
+    <view class="label">商品标题 <text>必填</text></view>
+    <view class="description-tip">请准确填写商品名称。标题不得少于5个字符，且不得包含无意义内容或泛化营销用语。</view>
+    <textarea class="title-input" placeholder="示例：304不锈钢保温杯 500ml" maxlength="100" bindinput="setDescription"/>
+    <view wx:if="{{descriptionError}}" class="validation-error">{{descriptionError}}</view>
+
+    <view class="label">商品分类 <text>必填</text></view>
+    <picker mode="multiSelector" range="{{categoryRange}}" range-key="name" value="{{categoryIndexes}}" bindcolumnchange="changeCategoryColumn" bindchange="confirmCategory">
+      <view class="category-picker {{categoryPath ? 'selected' : ''}}">{{categoryPath || '请选择一级、二级及三级商品分类'}}<text>›</text></view>
+    </picker>
+    <view class="label">报价与起订信息 <text>必填</text></view>
+    <view class="price-grid">
+      <view><view class="input-label">商品单价（R$/pc）</view><input type="digit" placeholder="示例：8.50" bindinput="setUnitPrice"/></view>
+      <view><view class="input-label">每箱装箱数量</view><input type="number" placeholder="示例：24" bindinput="setPiecesPerBox"/></view>
+      <view><view class="input-label">最低起订箱数</view><input type="number" value="{{minCartons}}" bindinput="setMinCartons"/></view>
+    </view>
+
+    <view class="label">规格与型号</view>
+    <input placeholder="请填写型号、尺寸、重量或包装方式" bindinput="setSpec"/>
+    <button class="primary submit" loading="{{submitting}}" bindtap="submit">确认发布</button>
+  </view>
+</view>

@@ -1,0 +1,26 @@
+<view class="page">
+  <view class="search-box">
+    <input class="input" placeholder="请输入商品、品牌或型号" value="{{q}}" bindinput="onInput" confirm-type="search" bindconfirm="search"/>
+    <view class="suggestion-panel" wx:if="{{suggestions.length}}">
+      <view wx:for="{{suggestions}}" wx:key="*this" class="suggestion-item" data-query="{{item}}" bindtap="chooseSuggestion">{{item}}</view>
+    </view>
+  </view>
+  <view wx:if="{{categoryName}}" class="category-filter">当前分类：{{categoryName}}</view>
+  <button class="primary search-button" bindtap="search">搜索</button>
+  <view class="history" wx:if="{{history.length && !items.length && !suggestions.length}}">
+    <view class="history-head"><text>找货历史</text><text bindtap="clearHistory">清空</text></view>
+    <view class="history-tags"><view wx:for="{{history}}" wx:key="id" class="history-tag" data-query="{{item.query_text}}" bindtap="search">{{item.query_text}}</view></view>
+  </view>
+  <view class="result-title" wx:if="{{items.length}}">搜索结果</view>
+  <view class="product-grid">
+    <view wx:for="{{items}}" wx:key="id" class="product" bindtap="detail" data-id="{{item.id}}">
+      <image src="{{item.cover_url}}" mode="widthFix"/>
+      <view class="product-body">
+        <view class="desc">{{item.description}}</view>
+        <view class="spec">{{item.spec_text || '规格待补充'}}</view>
+        <view class="price">{{item.price_type === 'NEGOTIABLE' ? '面议' : 'R$ ' + item.price + (item.price_unit ? ' / ' + item.price_unit : '')}}</view>
+        <view class="seller">商家：{{item.nickname}}</view>
+      </view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,25 @@
+<view class="page">
+  <view class="home-search-fixed">
+    <view class="search" bindtap="goSearch">搜索货源、品牌、型号　⌕</view>
+  </view>
+  <view class="home-content">
+    <view class="actions">
+      <view class="action" bindtap="goPublish">＋<text>发布货源</text></view>
+      <view class="action" bindtap="goWanted">⌁<text>我要找货</text></view>
+      <view class="action" bindtap="goSearch">▣<text>拍照找货</text></view>
+    </view>
+    <view class="section-title">最新货源</view>
+    <view class="product-grid">
+      <view wx:for="{{products}}" wx:key="id" class="product" bindtap="goDetail" data-id="{{item.id}}">
+        <image src="{{item.cover_url}}" mode="widthFix"/>
+        <view class="product-body">
+          <view class="desc">{{item.description}}</view>
+          <view class="spec">{{item.spec_text || '规格待补充'}}</view>
+          <view class="price">{{item.price_type === 'NEGOTIABLE' ? '面议' : 'R$ ' + item.price}}</view>
+          <view class="seller">商家：{{item.nickname}}</view>
+        </view>
+      </view>
+    </view>
+    <view wx:if="{{!products.length}}" class="empty">暂时没有货源，先发布第一条吧。</view>
+  </view>
+</view>

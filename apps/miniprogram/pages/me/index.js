@@ -1,0 +1,3 @@
+const app=getApp();
+const request=(url)=>new Promise((resolve,reject)=>wx.request({url:app.globalData.apiBaseUrl+url,header:{Authorization:'Bearer '+app.globalData.token},success:r=>r.statusCode<300?resolve(r.data):reject(r.data),fail:reject}));
+Page({data:{user:{},products:[],wanted:[],favorites:[]},onShow(){setTimeout(async()=>{if(!app.globalData.token)return;try{const [user,products,wanted,favorites]=await Promise.all([request('/api/v1/me'),request('/api/v1/me/products'),request('/api/v1/me/wanted-posts'),request('/api/v1/me/favorites')]);this.setData({user,products:products.items,wanted:wanted.items,favorites:favorites.items})}catch(e){wx.showToast({title:'加载我的数据失败',icon:'none'})}},200)},goContacts(){wx.navigateTo({url:'/pages/contact-settings/index'})}})

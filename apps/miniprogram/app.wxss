@@ -1,0 +1,79 @@
+page {
+  min-height: 100%;
+  background: #f5f8fa;
+  color: #17324d;
+  font-family: "Microsoft YaHei", sans-serif;
+  font-size: 28rpx;
+}
+
+view, text, input, textarea, button, image {
+  box-sizing: border-box;
+}
+
+.page {
+  width: 100%;
+  min-height: 100vh;
+  padding: 24rpx;
+  padding-left: calc(24rpx + env(safe-area-inset-left));
+  padding-right: calc(24rpx + env(safe-area-inset-right));
+}
+
+.card {
+  width: 100%;
+  margin: 20rpx 0;
+  padding: 28rpx;
+  overflow: hidden;
+  background: #fff;
+  border-radius: 20rpx;
+  box-shadow: 0 4rpx 18rpx rgba(23, 50, 77, 0.05);
+}
+
+input,
+textarea {
+  width: 100%;
+  font-size: 28rpx;
+  color: #17324d;
+}
+
+input {
+  min-height: 88rpx;
+}
+
+textarea {
+  min-height: 220rpx;
+  line-height: 1.55;
+}
+
+button {
+  min-height: 88rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 28rpx;
+  font-size: 30rpx;
+  line-height: 1.2;
+  border-radius: 14rpx;
+}
+
+button::after {
+  border: 0;
+}
+
+.primary {
+  background: #176b87;
+  color: #fff;
+  border-radius: 14rpx;
+}
+
+.muted {
+  color: #667085;
+  font-size: 26rpx;
+  line-height: 1.55;
+}
+
+@media (min-width: 768px) {
+  .page {
+    max-width: 720px;
+    margin: 0 auto;
+  }
+}

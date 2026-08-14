@@ -1,0 +1,15 @@
+<view class="page">
+  <view class="card user">
+    <view class="avatar">货</view>
+    <view><view class="name">{{user.nickname||'找货用户'}}</view><view class="muted">统一发布与找货身份</view></view>
+  </view>
+  <view class="counts">
+    <view><strong>{{products.length}}</strong><text>我的货源</text></view>
+    <view><strong>{{wanted.length}}</strong><text>找货需求</text></view>
+    <view><strong>{{favorites.length}}</strong><text>我的收藏</text></view>
+  </view>
+  <view class="card setting" bindtap="goContacts"><view><view class="title">联系方式设置</view><view class="muted">设置后，其他用户可在商品详情中联系你</view></view><text>›</text></view>
+  <view class="card"><view class="title">我的发布</view><view wx:for="{{products}}" wx:key="id" class="row"><view>{{item.description}}</view><view class="muted">{{item.status}} · {{item.price_type==='NEGOTIABLE'?'面议':'R$ '+item.price}}</view></view><view wx:if="{{!products.length}}" class="muted">还没有发布货源</view></view>
+  <view class="card"><view class="title">我的找货历史</view><view wx:for="{{wanted}}" wx:key="id" class="row"><view>{{item.description||'图片找货需求'}}</view><view class="muted">{{item.status}} · {{item.created_at}}</view></view><view wx:if="{{!wanted.length}}" class="muted">还没有发布找货需求</view></view>
+  <view class="card"><view class="title">我的收藏</view><view wx:for="{{favorites}}" wx:key="id" class="row"><view>{{item.description}}</view><view class="muted">{{item.nickname}} · {{item.price_type==='NEGOTIABLE'?'面议':'R$ '+item.price}}</view></view><view wx:if="{{!favorites.length}}" class="muted">还没有收藏货源</view></view>
+</view>

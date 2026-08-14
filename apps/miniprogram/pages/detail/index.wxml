@@ -1,0 +1,46 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="skeleton">
+    <view class="skeleton-image"></view>
+    <view class="skeleton-card"><view></view><view></view><view></view><view></view></view>
+  </view>
+
+  <view wx:if="{{loadFailed}}" class="load-error">
+    <view class="error-title">商品信息加载失败</view>
+    <view class="error-text">请检查本地服务连接后重新加载。</view>
+    <button class="primary retry-button" bindtap="loadProduct">重新加载</button>
+  </view>
+
+  <block wx:if="{{product}}">
+    <view class="gallery-wrap">
+      <view wx:if="{{imageLoading || !product.images.length}}" class="gallery-placeholder">商品图片加载中…</view>
+      <swiper wx:else class="gallery" indicator-dots bindchange="onSwiperChange">
+        <swiper-item wx:for="{{product.images}}" wx:key="object_key"><image src="{{item.object_key}}" mode="aspectFit"/></swiper-item>
+      </swiper>
+      <view wx:if="{{product.images.length > 1}}" class="image-count">{{activeImage}} / {{product.images.length}}</view>
+    </view>
+
+    <view class="card product-info">
+      <view class="quote-label">商品单价</view>
+      <view class="price">{{product.price_type==='NEGOTIABLE' ? '面议' : 'R$ '+product.price+(product.price_unit ? ' / '+product.price_unit : '')}}</view>
+      <view class="desc">{{product.description}}</view>
+    </view>
+
+    <view class="card detail-card">
+      <view class="card-title">货源信息</view>
+      <view class="info-row"><text>规格与型号</text><text>{{product.spec_text || '暂未填写'}}</text></view>
+      <view class="info-row" wx:if="{{product.extra_attrs && product.extra_attrs.piecesPerBox}}"><text>装箱数量</text><text>每箱 {{product.extra_attrs.piecesPerBox}} 个</text></view>
+      <view class="info-row" wx:if="{{product.extra_attrs && product.extra_attrs.piecesPerBox}}"><text>最低起订</text><text>{{product.extra_attrs.minCartons || 1}} 箱</text></view>
+      <view class="info-row" wx:if="{{product.quantity}}"><text>可供数量</text><text>{{product.quantity}} {{product.quantity_unit || '件'}}</text></view>
+      <view class="info-row"><text>商家用户名</text><text>{{product.nickname}}</text></view>
+    </view>
+
+    <view class="card contact-result" wx:if="{{contact}}">
+      <view class="contact-title">商家联系方式</view>
+      <view class="contact-value">{{contact.contactType==='WECHAT' ? '微信号：' : '联系电话：'}}{{contact.value}}</view>
+      <button class="copy-button" bindtap="copyContact">复制联系方式</button>
+      <view class="contact-hint">如已添加商家为好友，可返回微信聊天列表直接联系；如尚未添加，请复制联系方式后添加商家。</view>
+    </view>
+
+    <view class="bottom" wx:if="{{actionsReady}}"><button bindtap="favorite">收藏</button><button class="primary" bindtap="contact">获取商家微信</button></view>
+  </block>
+</view>

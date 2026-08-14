@@ -1,0 +1,27 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: buscasp
+      POSTGRES_USER: buscasp
+      POSTGRES_PASSWORD: buscasp_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/001_initial.sql:/docker-entrypoint-initdb.d/001_initial.sql:ro
+      - ./postgres/002_contact_and_operations.sql:/docker-entrypoint-initdb.d/002_contact_and_operations.sql:ro
+      - ./postgres/003_wechat_login.sql:/docker-entrypoint-initdb.d/003_wechat_login.sql:ro
+      - ./postgres/004_testimp_products.sql:/docker-entrypoint-initdb.d/004_testimp_products.sql:ro
+      - ./postgres/005_mercado_print_products.sql:/docker-entrypoint-initdb.d/005_mercado_print_products.sql:ro
+      - ./postgres/006_screenshot_products.sql:/docker-entrypoint-initdb.d/006_screenshot_products.sql:ro
+      - ./postgres/007_search_history.sql:/docker-entrypoint-initdb.d/007_search_history.sql:ro
+      - ./postgres/008_search_keywords.sql:/docker-entrypoint-initdb.d/008_search_keywords.sql:ro
+      - ./postgres/009_fuzzy_keyword_aliases.sql:/docker-entrypoint-initdb.d/009_fuzzy_keyword_aliases.sql:ro
+      - ./postgres/010_category_codes.sql:/docker-entrypoint-initdb.d/010_category_codes.sql:ro
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+volumes:
+  postgres_data:

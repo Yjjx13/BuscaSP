@@ -1,0 +1,14 @@
+<view class="category-page">
+  <scroll-view class="top-list" scroll-y>
+    <view wx:for="{{categories}}" wx:key="id" class="top-item {{selectedIndex===index?'active':''}}" data-index="{{index}}" bindtap="chooseTop">{{item.name}}</view>
+  </scroll-view>
+  <scroll-view class="detail-list" scroll-y wx:if="{{categories[selectedIndex]}}">
+    <view class="category-title">{{categories[selectedIndex].name}}</view>
+    <view wx:for="{{categories[selectedIndex].children}}" wx:key="id" class="second-block">
+      <view class="second-name">{{item.name}}</view>
+      <view class="third-list">
+        <view wx:for="{{item.children}}" wx:key="id" class="third-item" data-id="{{item.id}}" data-name="{{item.name}}" bindtap="searchCategory">{{item.name}}</view>
+      </view>
+    </view>
+  </scroll-view>
+</view>
