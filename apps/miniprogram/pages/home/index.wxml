@@ -8,6 +8,9 @@
       <view class="action" bindtap="goWanted">⌁<text>我要找货</text></view>
       <view class="action" bindtap="goSearch">▣<text>拍照找货</text></view>
     </view>
+    <scroll-view class="category-tabs" scroll-x enable-flex>
+      <view wx:for="{{categories}}" wx:key="id" class="category-tab {{activeCategoryId===item.id?'active':''}}" data-id="{{item.id}}" bindtap="chooseCategory">{{item.name}}</view>
+    </scroll-view>
     <view class="section-title">最新货源</view>
     <view class="product-grid">
       <view wx:for="{{products}}" wx:key="id" class="product" bindtap="goDetail" data-id="{{item.id}}">
@@ -17,6 +20,7 @@
           <view class="spec">{{item.spec_text || '规格待补充'}}</view>
           <view class="price">{{item.price_type === 'NEGOTIABLE' ? '面议' : 'R$ ' + item.price}}</view>
           <view class="seller">商家：{{item.nickname}}</view>
+          <view class="seller" wx:if="{{item.region_name}}">地区：{{item.region_name}}</view>
         </view>
       </view>
     </view>

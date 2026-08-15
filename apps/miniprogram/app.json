@@ -1,5 +1,5 @@
 {
-  "pages": ["pages/home/index", "pages/search/index", "pages/publish/index", "pages/categories/index", "pages/wanted/index", "pages/wanted-create/index", "pages/me/index", "pages/contact-settings/index", "pages/detail/index"],
+  "pages": ["pages/home/index", "pages/search/index", "pages/publish/index", "pages/categories/index", "pages/wanted/index", "pages/wanted-create/index", "pages/me/index", "pages/my-products/index", "pages/my-wanted/index", "pages/my-favorites/index", "pages/contact-settings/index", "pages/region-settings/index", "pages/detail/index"],
   "window": { "navigationBarTitleText": "BuscaSP 找货", "navigationBarBackgroundColor": "#ffffff", "navigationBarTextStyle": "black", "backgroundColor": "#f5f8fa" },
   "subPackages": [],
   "tabBar": { "color": "#667085", "selectedColor": "#176B87", "list": [

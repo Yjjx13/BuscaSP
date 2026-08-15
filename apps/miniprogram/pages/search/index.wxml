@@ -7,7 +7,7 @@
   </view>
   <view wx:if="{{categoryName}}" class="category-filter">当前分类：{{categoryName}}</view>
   <button class="primary search-button" bindtap="search">搜索</button>
-  <view class="history" wx:if="{{history.length && !items.length && !suggestions.length}}">
+  <view class="history" wx:if="{{!q && !categoryId && history.length && !suggestions.length}}">
     <view class="history-head"><text>找货历史</text><text bindtap="clearHistory">清空</text></view>
     <view class="history-tags"><view wx:for="{{history}}" wx:key="id" class="history-tag" data-query="{{item.query_text}}" bindtap="search">{{item.query_text}}</view></view>
   </view>

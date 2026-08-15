@@ -18,7 +18,10 @@ const wantedInput = z.object({
 export async function wantedRoutes(app: FastifyInstance) {
   app.get('/api/v1/me/wanted-posts', async (request) => {
     const userId = await requireUser(request);
-    const result = await app.pg.query('SELECT * FROM wanted_posts WHERE user_id=$1 AND deleted_at IS NULL ORDER BY id DESC', [userId]);
+    const result = await app.pg.query(`SELECT w.*,COUNT(r.id)::int AS response_count FROM wanted_posts w
+      LEFT JOIN wanted_responses r ON r.wanted_post_id=w.id AND r.status='ACTIVE'
+      WHERE w.user_id=$1 AND w.deleted_at IS NULL
+      GROUP BY w.id ORDER BY w.created_at DESC,w.id DESC`, [userId]);
     return { items: result.rows };
   });
   app.get('/api/v1/wanted-posts', async () => {

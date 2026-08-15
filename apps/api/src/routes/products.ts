@@ -11,7 +11,7 @@ const productInput = z.object({
   price: z.number().nonnegative().nullable().optional(),
   priceUnit: z.string().max(30).optional(),
   categoryId: z.number().int().positive(),
-  quantity: z.number().nonnegative().nullable().optional(),
+  quantity: z.number().int().positive().nullable().optional(),
   quantityUnit: z.string().max(30).optional(),
   specText: z.string().max(200).optional(),
   regionCode: z.string().max(20).optional(),
@@ -31,6 +31,22 @@ const listQuery = z.object({
   maxPrice: z.coerce.number().nonnegative().optional(),
   cursor: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().min(1).max(50).default(20)
+});
+
+const myProductsQuery = z.object({
+  q: z.string().trim().max(100).optional(),
+  status: z.enum(['PUBLISHED', 'OFF_SHELF', 'SOLD', 'PENDING']).optional()
+});
+
+const productManageInput = z.object({
+  description: z.string().trim().max(1000),
+  price: z.number().nonnegative(),
+  priceUnit: z.string().max(30).optional(),
+  specText: z.string().max(200).optional(),
+  categoryId: z.number().int().positive().optional()
+}).superRefine((value, ctx) => {
+  const descriptionMessage = productDescriptionError(value.description);
+  if (descriptionMessage) ctx.addIssue({ code: 'custom', path: ['description'], message: descriptionMessage });
 });
 
 async function findRelatedKeywords(app: FastifyInstance, query: string, limit = 8): Promise<string[]> {
@@ -102,10 +118,15 @@ export async function productRoutes(app: FastifyInstance) {
 
   app.get('/api/v1/me/products', async (request) => {
     const userId = await requireUser(request);
-    const result = await app.pg.query(`SELECT p.id,p.description,p.price_type,p.price,p.price_unit,p.status,p.published_at,p.expires_at,
+    const query = myProductsQuery.parse(request.query);
+    const values: unknown[] = [userId];
+    const clauses = ['p.user_id=$1', 'p.deleted_at IS NULL'];
+    if (query.q) { values.push(query.q); clauses.push(`p.description ILIKE '%' || $${values.length} || '%'`); }
+    if (query.status) { values.push(query.status); clauses.push(`p.status=$${values.length}`); }
+    const result = await app.pg.query(`SELECT p.id,p.category_id,p.description,p.price_type,p.price,p.price_unit,p.spec_text,p.status,p.published_at,p.expires_at,
       (SELECT thumb_key FROM product_images WHERE product_id=p.id ORDER BY sort_order LIMIT 1) AS cover_url
-      FROM products p WHERE p.user_id=$1 AND p.deleted_at IS NULL ORDER BY p.id DESC`, [userId]);
-    return { items: result.rows };
+      FROM products p WHERE ${clauses.join(' AND ')} ORDER BY p.id DESC`, values);
+    return { items: result.rows.map(secureProductImages) };
   });
 
   app.get('/api/v1/products', async (request) => {
@@ -122,17 +143,30 @@ export async function productRoutes(app: FastifyInstance) {
         OR COALESCE(p.spec_text, '') ILIKE ANY(SELECT '%' || term || '%' FROM unnest($${values.length}::text[]) AS term)
       )`);
     }
-    if (q.categoryId) add('p.category_id = ?', q.categoryId);
-    if (q.regionCode) add('p.region_code = ?', q.regionCode);
+    if (q.categoryId) {
+      values.push(q.categoryId);
+      clauses.push(`p.category_id IN (
+        WITH RECURSIVE category_tree AS (
+          SELECT id FROM categories WHERE id=$${values.length}
+          UNION ALL
+          SELECT c.id FROM categories c JOIN category_tree t ON c.parent_id=t.id
+        ) SELECT id FROM category_tree
+      )`);
+    }
+    if (q.regionCode) {
+      values.push(q.regionCode, q.regionCode);
+      clauses.push(`(p.region_code = $${values.length - 1} OR (p.region_code IS NULL AND u.region_code = $${values.length}))`);
+    }
     if (q.minPrice !== undefined) add('p.price >= ?', q.minPrice);
     if (q.maxPrice !== undefined) add('p.price <= ?', q.maxPrice);
     if (q.cursor) add('p.id < ?', q.cursor);
     values.push(q.limit + 1);
     const result = await app.pg.query(`
       SELECT p.id, p.description, p.price_type, p.price, p.price_unit, p.spec_text, p.quantity, p.quantity_unit, p.published_at,
-             u.id AS user_id, u.nickname, u.avatar_url,
+             u.id AS user_id, u.nickname, u.avatar_url, COALESCE(p.region_code,u.region_code) AS region_code, r.name AS region_name,
              (SELECT pi.thumb_key FROM product_images pi WHERE pi.product_id = p.id ORDER BY pi.sort_order LIMIT 1) AS cover_url
       FROM products p JOIN users u ON u.id = p.user_id
+      LEFT JOIN sao_paulo_regions r ON r.code=COALESCE(p.region_code,u.region_code)
       WHERE ${clauses.join(' AND ')}
       ORDER BY p.id DESC LIMIT $${values.length}`, values);
     const hasMore = result.rows.length > q.limit;
@@ -160,10 +194,31 @@ export async function productRoutes(app: FastifyInstance) {
     return reply.code(201).send(product);
   });
 
+  app.get('/api/v1/products/:id/related', async (request) => {
+    const id = z.coerce.number().int().positive().parse((request.params as { id: string }).id);
+    const result = await app.pg.query(`WITH source AS (
+      SELECT category_id FROM products WHERE id=$1 AND deleted_at IS NULL
+    )
+      SELECT p.id,p.description,p.price_type,p.price,p.price_unit,p.spec_text,u.nickname,
+        (SELECT pi.thumb_key FROM product_images pi WHERE pi.product_id=p.id ORDER BY pi.sort_order LIMIT 1) AS cover_url
+      FROM products p JOIN users u ON u.id=p.user_id JOIN source s ON true
+      WHERE p.id<>$1 AND p.status='PUBLISHED' AND p.deleted_at IS NULL AND p.expires_at>NOW()
+        AND s.category_id IS NOT NULL AND p.category_id=s.category_id
+      ORDER BY p.id DESC LIMIT 3`, [id]);
+    return { items: result.rows.map(secureProductImages) };
+  });
+
   app.get('/api/v1/products/:id', async (request, reply) => {
     const id = z.coerce.number().int().positive().parse((request.params as { id: string }).id);
-    const product = await app.pg.query(`SELECT p.*, u.id AS publisher_id, u.nickname, u.avatar_url, u.contact_policy
-      FROM products p JOIN users u ON u.id=p.user_id WHERE p.id=$1 AND p.status='PUBLISHED' AND p.deleted_at IS NULL`, [id]);
+    const product = await app.pg.query(`SELECT p.*, u.id AS publisher_id, u.nickname, u.avatar_url, u.contact_policy,
+      COALESCE(p.region_code,u.region_code) AS region_code,r.name AS region_name,
+      c.name AS category_name,concat_ws(' / ',c1.name,c2.name,c.name) AS category_path
+      FROM products p JOIN users u ON u.id=p.user_id
+      LEFT JOIN sao_paulo_regions r ON r.code=COALESCE(p.region_code,u.region_code)
+      LEFT JOIN categories c ON c.id=p.category_id
+      LEFT JOIN categories c2 ON c2.id=c.parent_id
+      LEFT JOIN categories c1 ON c1.id=c2.parent_id
+      WHERE p.id=$1 AND p.status='PUBLISHED' AND p.deleted_at IS NULL`, [id]);
     if (!product.rows[0]) return reply.code(404).send({ code: 'PRODUCT_NOT_FOUND', message: '商品不存在或已下架' });
     const images = await app.pg.query('SELECT object_key, thumb_key, sort_order FROM product_images WHERE product_id=$1 ORDER BY sort_order', [id]);
     return secureProductImages({ ...product.rows[0], images: images.rows });
@@ -176,6 +231,31 @@ export async function productRoutes(app: FastifyInstance) {
     const result = await app.pg.query('UPDATE products SET status=$1, updated_at=NOW() WHERE id=$2 AND user_id=$3 AND deleted_at IS NULL RETURNING id,status', [body.status, id, userId]);
     if (!result.rows[0]) return reply.code(404).send({ code: 'PRODUCT_NOT_FOUND', message: '商品不存在或无权限' });
     return result.rows[0];
+  });
+
+  app.put('/api/v1/products/:id', async (request, reply) => {
+    const userId = await requireUser(request);
+    const id = z.coerce.number().int().positive().parse((request.params as { id: string }).id);
+    const body = productManageInput.parse(request.body);
+    if (body.categoryId) {
+      const category = await app.pg.query("SELECT id FROM categories WHERE id=$1 AND level=3 AND status='ACTIVE'", [body.categoryId]);
+      if (!category.rows[0]) return reply.code(400).send({ code: 'INVALID_CATEGORY', message: '请选择有效的三级商品分类' });
+    }
+    const result = await app.pg.query(`UPDATE products SET description=$1,price=$2,price_unit=$3,spec_text=$4,
+      category_id=COALESCE($5,category_id),updated_at=NOW() WHERE id=$6 AND user_id=$7 AND deleted_at IS NULL
+      RETURNING id,category_id,description,price,price_unit,spec_text,status,updated_at`,
+      [body.description, body.price, body.priceUnit ?? 'pc', body.specText ?? null, body.categoryId ?? null, id, userId]);
+    if (!result.rows[0]) return reply.code(404).send({ code: 'PRODUCT_NOT_FOUND', message: '商品不存在或无管理权限' });
+    return result.rows[0];
+  });
+
+  app.delete('/api/v1/products/:id', async (request, reply) => {
+    const userId = await requireUser(request);
+    const id = z.coerce.number().int().positive().parse((request.params as { id: string }).id);
+    const result = await app.pg.query(`UPDATE products SET status='OFF_SHELF',deleted_at=NOW(),updated_at=NOW()
+      WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL RETURNING id`, [id, userId]);
+    if (!result.rows[0]) return reply.code(404).send({ code: 'PRODUCT_NOT_FOUND', message: '商品不存在或无管理权限' });
+    return { id, deleted: true };
   });
 
   app.put('/api/v1/products/:id/favorite', async (request, reply) => {
