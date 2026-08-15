@@ -8,6 +8,15 @@ function apiRequest(options) {
   }));
 }
 
+function withBoxCount(product) {
+  const rawCount = product?.extra_attrs?.piecesPerBox ?? product?.quantity;
+  const numericCount = Number(rawCount);
+  return {
+    ...product,
+    box_count: Number.isInteger(numericCount) ? String(numericCount) : (rawCount ?? '')
+  };
+}
+
 Page({
   data: {
     product: null,
@@ -16,12 +25,14 @@ Page({
     imageLoading: true,
     loadFailed: false,
     actionsReady: false,
-    activeImage: 1
+    activeImage: 1,
+    related: []
   },
 
   onLoad(query) {
     this.productId = query.id;
     this.loadProduct();
+    this.loadRelated();
   },
 
   onUnload() {
@@ -35,17 +46,30 @@ Page({
       url: app.globalData.apiBaseUrl + '/api/v1/products/' + this.productId,
       success: async response => {
         if (response.statusCode >= 300 || !response.data) return this.showLoadError();
-        const rawProduct = response.data;
+        const rawProduct = withBoxCount(response.data);
         // 先呈现报价和文字信息，图片在后台转换为本地临时文件。
         this.setData({ product: { ...rawProduct, images: [] }, loading: false });
         this.actionsTimer = setTimeout(() => {
           if (!this.pageClosed) this.setData({ actionsReady: true });
         }, 120);
-        const localized = (await app.localizeProducts([rawProduct]))[0];
+        const localized = withBoxCount((await app.localizeProducts([rawProduct]))[0]);
         if (!this.pageClosed) this.setData({ product: localized, imageLoading: false });
       },
       fail: () => this.showLoadError()
     });
+  },
+
+  loadRelated() {
+    wx.request({
+      url: app.globalData.apiBaseUrl + '/api/v1/products/' + this.productId + '/related',
+      success: async response => {
+        if (response.statusCode < 300) this.setData({ related: await app.localizeProducts(response.data.items || []) });
+      }
+    });
+  },
+
+  openRelated(event) {
+    wx.redirectTo({ url: '/pages/detail/index?id=' + event.currentTarget.dataset.id });
   },
 
   showLoadError() {

@@ -17,14 +17,18 @@ Page({
       this.search();
     }
   },
-  onShow() { this.loadHistory(); },
+  onShow() { this.loadHistory(); this.applyCategoryFilter(); },
   onUnload() { if (this.suggestionTimer) clearTimeout(this.suggestionTimer); },
 
   onInput(event) {
     const query = event.detail.value;
     this.setData({ q: query });
     if (this.suggestionTimer) clearTimeout(this.suggestionTimer);
-    if (!query.trim()) return this.setData({ suggestions: [] });
+    if (!query.trim()) {
+      this.setData({ suggestions: [], items: [] });
+      if (this.data.categoryId) this.search();
+      return;
+    }
     this.suggestionTimer = setTimeout(() => this.loadSuggestions(query), 180);
   },
 
@@ -43,9 +47,22 @@ Page({
     } catch (_) {}
   },
 
+  applyCategoryFilter() {
+    const filter = wx.getStorageSync('category_filter');
+    if (!filter || !filter.id || String(filter.id) === String(this.data.categoryId)) return;
+    this.setData({ categoryId: filter.id, categoryName: filter.name || '', q: '', items: [], suggestions: [] });
+    this.search();
+  },
+
   async search(event) {
     const query = (event?.currentTarget?.dataset?.query || this.data.q).trim();
     this.setData({ q: query, suggestions: [] });
+    // 空关键词不请求商品列表，避免把全部商品误当成搜索结果。
+    // 已从分类页进入时仍保留分类浏览结果。
+    if (!query && !this.data.categoryId) {
+      this.setData({ items: [] });
+      return;
+    }
     const categoryPart = this.data.categoryId ? '&categoryId=' + this.data.categoryId : '';
     wx.request({ url: app.globalData.apiBaseUrl + '/api/v1/products?q=' + encodeURIComponent(query) + categoryPart, success: async response => this.setData({ items: await app.localizeProducts(response.data.items || []) }) });
     if (!query) return;

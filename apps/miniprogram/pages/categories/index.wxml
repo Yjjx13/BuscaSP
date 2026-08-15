@@ -7,8 +7,37 @@
     <view wx:for="{{categories[selectedIndex].children}}" wx:key="id" class="second-block">
       <view class="second-name">{{item.name}}</view>
       <view class="third-list">
-        <view wx:for="{{item.children}}" wx:key="id" class="third-item" data-id="{{item.id}}" data-name="{{item.name}}" bindtap="searchCategory">{{item.name}}</view>
+        <view wx:for="{{item.children}}" wx:key="id" class="third-item" data-id="{{item.id}}" data-name="{{item.name}}" bindtap="openCategoryDetail">{{item.name}}</view>
       </view>
     </view>
   </scroll-view>
+</view>
+
+<view wx:if="{{drawerVisible}}" class="drawer-layer">
+  <view class="drawer-mask" bindtap="closeCategoryDetail"></view>
+  <view class="category-drawer {{drawerOpen?'open':''}}" catchtap="noop">
+    <view class="drawer-header">
+      <view class="back-button" bindtap="closeCategoryDetail">‹ 返回</view>
+      <view class="drawer-title">{{activeCategory.name}}</view>
+      <view class="header-space"></view>
+    </view>
+    <view class="drawer-search">
+      <input placeholder="在该分类内搜索商品" value="{{categoryQuery}}" bindinput="onCategoryInput" bindconfirm="searchInCategory" confirm-type="search"/>
+      <view class="search-action" bindtap="searchInCategory">搜索</view>
+    </view>
+    <scroll-view class="product-scroll" scroll-y>
+      <view wx:if="{{loadingProducts}}" class="state-text">正在加载商品…</view>
+      <view wx:elif="{{!categoryProducts.length}}" class="state-text">该分类暂未找到商品</view>
+      <view wx:else class="product-grid">
+        <view wx:for="{{categoryProducts}}" wx:key="id" class="product" data-id="{{item.id}}" bindtap="detail">
+          <image src="{{item.cover_url}}" mode="aspectFill"/>
+          <view class="product-body">
+            <view class="product-name">{{item.description}}</view>
+            <view class="product-spec">{{item.spec_text || '规格待补充'}}</view>
+            <view class="product-price">{{item.price_type === 'NEGOTIABLE' ? '面议' : 'R$ ' + item.price}}</view>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
 </view>

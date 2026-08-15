@@ -13,15 +13,32 @@ function requireAdmin(request: FastifyRequest) {
 }
 
 const idParam = z.object({ id: z.coerce.number().int().positive() });
+const regionCodeParam = z.object({ code: z.string().trim().min(2).max(20).regex(/^[A-Z0-9_]+$/) });
+const regionBody = z.object({
+  code: z.string().trim().min(2).max(20).regex(/^[A-Z0-9_]+$/, '地区编码只能使用大写字母、数字和下划线'),
+  name: z.string().trim().min(2).max(80),
+  sortOrder: z.coerce.number().int().min(0).default(100),
+  status: z.enum(['ACTIVE', 'DISABLED']).default('ACTIVE')
+});
 const productBody = z.object({
   userId: z.coerce.number().int().positive(), categoryId: z.coerce.number().int().positive().nullable().optional(),
   description: z.string().trim().max(1000).superRefine((value, ctx) => { const message = productDescriptionError(value); if (message) ctx.addIssue({ code: 'custom', message }); }), priceType: z.enum(['FIXED', 'NEGOTIABLE']).default('FIXED'),
   price: z.coerce.number().nonnegative().nullable().optional(), priceUnit: z.string().max(30).default('元/件'),
-  quantity: z.coerce.number().nonnegative().nullable().optional(), quantityUnit: z.string().max(30).nullable().optional(),
+  quantity: z.coerce.number().int().positive().nullable().optional(), quantityUnit: z.string().max(30).nullable().optional(),
   specText: z.string().max(200).nullable().optional(), regionCode: z.string().max(20).nullable().optional(),
   status: z.enum(['PUBLISHED', 'OFF_SHELF', 'SOLD', 'VIOLATION']).default('PUBLISHED'), imageUrl: z.string().max(500).nullable().optional()
 }).superRefine((value, ctx) => {
   if (value.priceType === 'FIXED' && value.price == null) ctx.addIssue({ code: 'custom', path: ['price'], message: '固定价格必须填写金额' });
+});
+
+const reportBody = z.object({
+  reporterUserId: z.coerce.number().int().positive(),
+  targetType: z.enum(['PRODUCT', 'WANTED', 'USER']),
+  targetId: z.coerce.number().int().positive(),
+  reasonCode: z.enum(['FAKE', 'SOLD_OUT', 'FAKE_PRICE', 'STOLEN_IMAGE', 'PROHIBITED', 'FRAUD', 'INVALID_CONTACT', 'SPAM', 'OTHER']),
+  description: z.string().trim().max(500).nullable().optional(),
+  status: z.enum(['OPEN', 'PROCESSING', 'CLOSED']).default('OPEN'),
+  resolution: z.enum(['NO_VIOLATION', 'WARNED', 'CONTENT_REMOVED', 'USER_LIMITED', 'USER_BANNED']).nullable().optional()
 });
 
 export async function adminRoutes(app: FastifyInstance) {
@@ -41,16 +58,21 @@ export async function adminRoutes(app: FastifyInstance) {
   });
 
   app.get('/api/v1/admin/products', async (request) => {
-    const query = z.object({ q: z.string().max(100).optional(), status: z.string().max(30).optional() }).parse(request.query);
+    const query = z.object({
+      q: z.string().max(100).optional(), status: z.string().max(30).optional(),
+      page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(20)
+    }).parse(request.query);
     const values: unknown[] = [];
     const clauses = ['p.deleted_at IS NULL'];
     if (query.q) { values.push(query.q); clauses.push(`(p.description ILIKE '%'||$${values.length}||'%' OR u.nickname ILIKE '%'||$${values.length}||'%')`); }
     if (query.status) { values.push(query.status); clauses.push(`p.status=$${values.length}`); }
+    const totalResult = await app.pg.query(`SELECT COUNT(*)::int AS total FROM products p JOIN users u ON u.id=p.user_id WHERE ${clauses.join(' AND ')}`, values);
+    const pageValues = [...values, query.pageSize, (query.page - 1) * query.pageSize];
     const result = await app.pg.query(`SELECT p.*,u.nickname,c.name AS category_name,
       (SELECT thumb_key FROM product_images WHERE product_id=p.id ORDER BY sort_order LIMIT 1) AS cover_url
       FROM products p JOIN users u ON u.id=p.user_id LEFT JOIN categories c ON c.id=p.category_id
-      WHERE ${clauses.join(' AND ')} ORDER BY p.id DESC LIMIT 200`, values);
-    return { items: result.rows };
+      WHERE ${clauses.join(' AND ')} ORDER BY p.id DESC LIMIT $${pageValues.length - 1} OFFSET $${pageValues.length}`, pageValues);
+    return { items: result.rows, pagination: { page: query.page, pageSize: query.pageSize, total: totalResult.rows[0].total } };
   });
 
   app.post('/api/v1/admin/products', async (request, reply) => {
@@ -69,10 +91,19 @@ export async function adminRoutes(app: FastifyInstance) {
 
   app.put('/api/v1/admin/products/:id', async (request, reply) => {
     const { id } = idParam.parse(request.params); const body = productBody.parse(request.body);
-    const result = await app.pg.query(`UPDATE products SET user_id=$1,category_id=$2,description=$3,price_type=$4,price=$5,price_unit=$6,
-      quantity=$7,quantity_unit=$8,spec_text=$9,region_code=$10,status=$11,updated_at=NOW() WHERE id=$12 AND deleted_at IS NULL RETURNING *`,
-      [body.userId,body.categoryId??null,body.description,body.priceType,body.price??null,body.priceUnit,body.quantity??null,body.quantityUnit??null,body.specText??null,body.regionCode??null,body.status,id]);
-    if (!result.rows[0]) return reply.code(404).send({ message: '商品不存在' }); return result.rows[0];
+    const row = await withTransaction(async (client) => {
+      const result = await client.query(`UPDATE products SET user_id=$1,category_id=$2,description=$3,price_type=$4,price=$5,price_unit=$6,
+        quantity=$7,quantity_unit=$8,spec_text=$9,region_code=$10,status=$11,updated_at=NOW() WHERE id=$12 AND deleted_at IS NULL RETURNING *`,
+        [body.userId,body.categoryId??null,body.description,body.priceType,body.price??null,body.priceUnit,body.quantity??null,body.quantityUnit??null,body.specText??null,body.regionCode??null,body.status,id]);
+      if (!result.rows[0]) return null;
+      if (body.imageUrl) {
+        const image = await client.query('SELECT id FROM product_images WHERE product_id=$1 ORDER BY is_cover DESC,sort_order,id LIMIT 1', [id]);
+        if (image.rows[0]) await client.query('UPDATE product_images SET object_key=$1,thumb_key=$1 WHERE id=$2', [body.imageUrl, image.rows[0].id]);
+        else await client.query(`INSERT INTO product_images (product_id,object_key,thumb_key,sort_order,is_cover,moderation_status) VALUES ($1,$2,$2,1,true,'PASSED')`, [id, body.imageUrl]);
+      }
+      return result.rows[0];
+    });
+    if (!row) return reply.code(404).send({ message: '商品不存在' }); return row;
   });
 
   app.delete('/api/v1/admin/products/:id', async (request, reply) => {
@@ -81,9 +112,15 @@ export async function adminRoutes(app: FastifyInstance) {
     if (!result.rows[0]) return reply.code(404).send({ message: '商品不存在' }); return { deleted: true };
   });
 
-  app.get('/api/v1/admin/users', async () => ({ items: (await app.pg.query(`SELECT u.id,u.nickname,u.region_code,u.contact_policy,u.status,u.login_source,u.last_login_at,u.created_at,
+  app.get('/api/v1/admin/users', async (request) => {
+    const query=z.object({q:z.string().trim().max(100).optional(),status:z.string().trim().max(30).optional()}).parse(request.query);
+    const values:unknown[]=[];const clauses=['u.deleted_at IS NULL'];
+    if(query.q){values.push(query.q);clauses.push(`(u.nickname ILIKE '%'||$${values.length}||'%' OR CAST(u.id AS TEXT)=$${values.length})`)}
+    if(query.status){values.push(query.status);clauses.push(`u.status=$${values.length}`)}
+    return { items: (await app.pg.query(`SELECT u.id,u.nickname,u.region_code,u.contact_policy,u.status,u.login_source,u.last_login_at,u.created_at,
     COUNT(DISTINCT p.id) FILTER (WHERE p.deleted_at IS NULL) AS product_count,COUNT(DISTINCT w.id) FILTER (WHERE w.deleted_at IS NULL) AS wanted_count
-    FROM users u LEFT JOIN products p ON p.user_id=u.id LEFT JOIN wanted_posts w ON w.user_id=u.id WHERE u.deleted_at IS NULL GROUP BY u.id ORDER BY u.id DESC`)).rows }));
+    FROM users u LEFT JOIN products p ON p.user_id=u.id LEFT JOIN wanted_posts w ON w.user_id=u.id WHERE ${clauses.join(' AND ')} GROUP BY u.id ORDER BY u.id DESC LIMIT 200`,values)).rows };
+  });
 
   app.get('/api/v1/admin/users/:id', async (request, reply) => {
     const {id}=idParam.parse(request.params);
@@ -121,9 +158,15 @@ export async function adminRoutes(app: FastifyInstance) {
     if(!result.rows[0])return reply.code(404).send({message:'用户不存在'});return result.rows[0];
   });
 
-  app.get('/api/v1/admin/wanted-posts', async () => ({ items:(await app.pg.query(`SELECT w.*,u.nickname,c.name AS category_name,
+  app.get('/api/v1/admin/wanted-posts', async (request) => {
+    const query=z.object({q:z.string().trim().max(100).optional(),status:z.string().trim().max(30).optional()}).parse(request.query);
+    const values:unknown[]=[];const clauses=['w.deleted_at IS NULL'];
+    if(query.q){values.push(query.q);clauses.push(`(w.description ILIKE '%'||$${values.length}||'%' OR u.nickname ILIKE '%'||$${values.length}||'%')`)}
+    if(query.status){values.push(query.status);clauses.push(`w.status=$${values.length}`)}
+    return { items:(await app.pg.query(`SELECT w.*,u.nickname,c.name AS category_name,
     (SELECT COUNT(*) FROM wanted_responses r WHERE r.wanted_post_id=w.id AND r.status='ACTIVE') AS response_count
-    FROM wanted_posts w JOIN users u ON u.id=w.user_id LEFT JOIN categories c ON c.id=w.category_id WHERE w.deleted_at IS NULL ORDER BY w.id DESC`)).rows }));
+    FROM wanted_posts w JOIN users u ON u.id=w.user_id LEFT JOIN categories c ON c.id=w.category_id WHERE ${clauses.join(' AND ')} ORDER BY w.id DESC LIMIT 200`,values)).rows };
+  });
 
   app.post('/api/v1/admin/wanted-posts', async (request, reply) => {
     const b=z.object({userId:z.coerce.number().int().positive(),categoryId:z.coerce.number().int().positive().nullable().optional(),description:z.string().trim().min(2).max(1000),targetPrice:z.coerce.number().nonnegative().nullable().optional(),quantity:z.string().max(50).nullable().optional(),specText:z.string().max(200).nullable().optional(),regionCode:z.string().max(20).nullable().optional(),status:z.enum(['ACTIVE','FOUND','EXPIRED','OFF_SHELF','VIOLATION']).default('ACTIVE')}).parse(request.body);
@@ -137,12 +180,57 @@ export async function adminRoutes(app: FastifyInstance) {
 
   app.delete('/api/v1/admin/wanted-posts/:id', async (request, reply) => {const{id}=idParam.parse(request.params);const result=await app.pg.query("UPDATE wanted_posts SET status='DELETED',deleted_at=NOW(),updated_at=NOW() WHERE id=$1 AND deleted_at IS NULL RETURNING id",[id]);if(!result.rows[0])return reply.code(404).send({message:'找货需求不存在'});return{deleted:true};});
 
-  app.get('/api/v1/admin/reports', async () => ({items:(await app.pg.query(`SELECT r.*,u.nickname AS reporter_name FROM reports r JOIN users u ON u.id=r.reporter_user_id ORDER BY r.id DESC`)).rows}));
-  app.patch('/api/v1/admin/reports/:id', async (request, reply) => {const{id}=idParam.parse(request.params);const b=z.object({status:z.enum(['OPEN','PROCESSING','CLOSED']),resolution:z.enum(['NO_VIOLATION','WARNED','CONTENT_REMOVED','USER_LIMITED','USER_BANNED']).nullable().optional()}).parse(request.body);const result=await app.pg.query(`UPDATE reports SET status=$1::varchar,resolution=$2::varchar,handled_at=CASE WHEN $1::varchar='CLOSED' THEN NOW() ELSE handled_at END WHERE id=$3 RETURNING *`,[b.status,b.resolution??null,id]);if(!result.rows[0])return reply.code(404).send({message:'举报不存在'});return result.rows[0];});
+  app.get('/api/v1/admin/reports', async (request) => {
+    const query=z.object({q:z.string().trim().max(100).optional(),status:z.string().trim().max(30).optional()}).parse(request.query);
+    const values:unknown[]=[];const clauses=['1=1'];
+    if(query.q){values.push(query.q);clauses.push(`(u.nickname ILIKE '%'||$${values.length}||'%' OR r.description ILIKE '%'||$${values.length}||'%' OR r.reason_code ILIKE '%'||$${values.length}||'%')`)}
+    if(query.status){values.push(query.status);clauses.push(`r.status=$${values.length}`)}
+    return {items:(await app.pg.query(`SELECT r.*,u.nickname AS reporter_name FROM reports r JOIN users u ON u.id=r.reporter_user_id WHERE ${clauses.join(' AND ')} ORDER BY r.id DESC LIMIT 200`,values)).rows};
+  });
+  app.post('/api/v1/admin/reports', async (request, reply) => {const b=reportBody.parse(request.body);const result=await app.pg.query(`INSERT INTO reports (reporter_user_id,target_type,target_id,reason_code,description,status,resolution,handled_at) VALUES ($1,$2,$3,$4,$5,$6,$7,CASE WHEN $6::varchar='CLOSED' THEN NOW() END) RETURNING *`,[b.reporterUserId,b.targetType,b.targetId,b.reasonCode,b.description??null,b.status,b.resolution??null]);return reply.code(201).send(result.rows[0]);});
+  app.put('/api/v1/admin/reports/:id', async (request, reply) => {const{id}=idParam.parse(request.params);const b=reportBody.parse(request.body);const result=await app.pg.query(`UPDATE reports SET reporter_user_id=$1,target_type=$2,target_id=$3,reason_code=$4,description=$5,status=$6,resolution=$7,handled_at=CASE WHEN $6::varchar='CLOSED' THEN COALESCE(handled_at,NOW()) ELSE NULL END WHERE id=$8 RETURNING *`,[b.reporterUserId,b.targetType,b.targetId,b.reasonCode,b.description??null,b.status,b.resolution??null,id]);if(!result.rows[0])return reply.code(404).send({message:'举报不存在'});return result.rows[0];});
+  app.patch('/api/v1/admin/reports/:id', async (request, reply) => {const{id}=idParam.parse(request.params);const b=z.object({status:z.enum(['OPEN','PROCESSING','CLOSED']),resolution:z.enum(['NO_VIOLATION','WARNED','CONTENT_REMOVED','USER_LIMITED','USER_BANNED']).nullable().optional()}).parse(request.body);const result=await app.pg.query(`UPDATE reports SET status=$1::varchar,resolution=$2::varchar,handled_at=CASE WHEN $1::varchar='CLOSED' THEN COALESCE(handled_at,NOW()) ELSE NULL END WHERE id=$3 RETURNING *`,[b.status,b.resolution??null,id]);if(!result.rows[0])return reply.code(404).send({message:'举报不存在'});return result.rows[0];});
   app.delete('/api/v1/admin/reports/:id', async (request, reply) => {const{id}=idParam.parse(request.params);const result=await app.pg.query('DELETE FROM reports WHERE id=$1 RETURNING id',[id]);if(!result.rows[0])return reply.code(404).send({message:'举报不存在'});return{deleted:true};});
 
-  app.get('/api/v1/admin/categories', async () => ({items:(await app.pg.query('SELECT * FROM categories ORDER BY sort_order,id')).rows}));
+  app.get('/api/v1/admin/categories', async (request) => {const query=z.object({q:z.string().trim().max(100).optional(),status:z.string().trim().max(30).optional()}).parse(request.query);const values:unknown[]=[];const clauses=['1=1'];if(query.q){values.push(query.q);clauses.push(`c.name ILIKE '%'||$${values.length}||'%'`)}if(query.status){values.push(query.status);clauses.push(`c.status=$${values.length}`)}return {items:(await app.pg.query(`SELECT c.*,p.name AS parent_name FROM categories c LEFT JOIN categories p ON p.id=c.parent_id WHERE ${clauses.join(' AND ')} ORDER BY c.sort_order,c.id`,values)).rows};});
   app.post('/api/v1/admin/categories', async (request, reply) => {const b=z.object({name:z.string().trim().min(1).max(80),parentId:z.coerce.number().int().positive().nullable().optional(),level:z.coerce.number().int().min(1).max(3).default(1),sortOrder:z.coerce.number().int().default(0),status:z.enum(['ACTIVE','DISABLED']).default('ACTIVE')}).parse(request.body);const result=await app.pg.query('INSERT INTO categories (name,parent_id,level,sort_order,status) VALUES ($1,$2,$3,$4,$5) RETURNING *',[b.name,b.parentId??null,b.level,b.sortOrder,b.status]);return reply.code(201).send(result.rows[0]);});
   app.put('/api/v1/admin/categories/:id', async (request, reply) => {const{id}=idParam.parse(request.params);const b=z.object({name:z.string().trim().min(1).max(80),parentId:z.coerce.number().int().positive().nullable().optional(),level:z.coerce.number().int().min(1).max(3),sortOrder:z.coerce.number().int(),status:z.enum(['ACTIVE','DISABLED'])}).parse(request.body);const result=await app.pg.query('UPDATE categories SET name=$1,parent_id=$2,level=$3,sort_order=$4,status=$5,updated_at=NOW() WHERE id=$6 RETURNING *',[b.name,b.parentId??null,b.level,b.sortOrder,b.status,id]);if(!result.rows[0])return reply.code(404).send({message:'分类不存在'});return result.rows[0];});
   app.delete('/api/v1/admin/categories/:id', async (request, reply) => {const{id}=idParam.parse(request.params);const result=await app.pg.query("UPDATE categories SET status='DISABLED',updated_at=NOW() WHERE id=$1 RETURNING id",[id]);if(!result.rows[0])return reply.code(404).send({message:'分类不存在'});return{deleted:true};});
+
+  app.get('/api/v1/admin/regions', async (request) => {
+    const query = z.object({ q: z.string().trim().max(80).optional() }).parse(request.query);
+    const values: unknown[] = [];
+    const where = query.q ? "WHERE r.code ILIKE '%'||$1||'%' OR r.name ILIKE '%'||$1||'%'" : '';
+    if (query.q) values.push(query.q);
+    const result = await app.pg.query(`SELECT r.code,r.name,r.city_code,r.sort_order,r.status,r.created_at,
+      (SELECT COUNT(*) FROM users u WHERE u.region_code=r.code AND u.deleted_at IS NULL) AS user_count,
+      (SELECT COUNT(*) FROM products p WHERE p.region_code=r.code AND p.deleted_at IS NULL) AS product_count
+      FROM sao_paulo_regions r ${where} ORDER BY r.sort_order,r.code`, values);
+    return { items: result.rows };
+  });
+
+  app.post('/api/v1/admin/regions', async (request, reply) => {
+    const body = regionBody.parse(request.body);
+    const result = await app.pg.query(`INSERT INTO sao_paulo_regions (code,name,sort_order,status)
+      VALUES ($1,$2,$3,$4) RETURNING code,name,city_code,sort_order,status,created_at`,
+      [body.code, body.name, body.sortOrder, body.status]);
+    return reply.code(201).send(result.rows[0]);
+  });
+
+  app.put('/api/v1/admin/regions/:code', async (request, reply) => {
+    const { code } = regionCodeParam.parse(request.params);
+    const body = regionBody.parse(request.body);
+    const result = await app.pg.query(`UPDATE sao_paulo_regions SET name=$1,sort_order=$2,status=$3
+      WHERE code=$4 RETURNING code,name,city_code,sort_order,status,created_at`,
+      [body.name, body.sortOrder, body.status, code]);
+    if (!result.rows[0]) return reply.code(404).send({ message: '地区不存在' });
+    return result.rows[0];
+  });
+
+  app.delete('/api/v1/admin/regions/:code', async (request, reply) => {
+    const { code } = regionCodeParam.parse(request.params);
+    const result = await app.pg.query("UPDATE sao_paulo_regions SET status='DISABLED' WHERE code=$1 RETURNING code", [code]);
+    if (!result.rows[0]) return reply.code(404).send({ message: '地区不存在' });
+    return { deleted: true, code };
+  });
 }

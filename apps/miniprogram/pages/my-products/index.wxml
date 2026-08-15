@@ -1,0 +1,20 @@
+<view class="page">
+  <view class="search-row"><input placeholder="按商品标题查询" value="{{q}}" bindinput="onInput" confirm-type="search" bindconfirm="load"/><button class="primary" size="mini" bindtap="load">查询</button></view>
+  <view wx:if="{{loading}}" class="loading">正在查询商品…</view>
+  <view wx:for="{{items}}" wx:key="id" class="card product-card">
+    <image src="{{item.cover_url}}" mode="aspectFill"/>
+    <view class="product-main" wx:if="{{editingId !== item.id}}">
+      <view class="product-title">{{item.description}}</view>
+      <view class="product-price">{{item.price_type==='NEGOTIABLE' ? '面议' : 'R$ '+item.price+(item.price_unit ? ' / '+item.price_unit : '')}}</view>
+      <view class="product-meta">{{item.spec_text || '暂未填写规格'}} · {{item.status==='PUBLISHED' ? '已上架' : item.status==='SOLD' ? '已售出' : '已下架'}}</view>
+      <view class="actions"><button size="mini" data-id="{{item.id}}" bindtap="edit">编辑</button><button size="mini" data-id="{{item.id}}" data-status="{{item.status}}" bindtap="toggleStatus">{{item.status==='PUBLISHED' ? '下架' : '上架'}}</button><button size="mini" class="danger" data-id="{{item.id}}" bindtap="remove">删除</button></view>
+    </view>
+    <view class="product-main" wx:else>
+      <input value="{{editTitle}}" maxlength="100" placeholder="商品标题" bindinput="setEditTitle"/>
+      <input value="{{editPrice}}" type="digit" placeholder="商品单价（R$/pc）" bindinput="setEditPrice"/>
+      <input value="{{editSpec}}" placeholder="规格与型号" bindinput="setEditSpec"/>
+      <view class="actions"><button size="mini" class="primary" data-id="{{item.id}}" bindtap="save">保存</button><button size="mini" bindtap="cancelEdit">取消</button></view>
+    </view>
+  </view>
+  <view wx:if="{{!loading && !items.length}}" class="empty">暂无符合条件的商品。</view>
+</view>
