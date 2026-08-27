@@ -43,7 +43,9 @@ const productManageInput = z.object({
   price: z.number().nonnegative(),
   priceUnit: z.string().max(30).optional(),
   specText: z.string().max(200).optional(),
-  categoryId: z.number().int().positive().optional()
+  categoryId: z.number().int().positive().optional(),
+  extraAttrs: z.record(z.string(), z.unknown()).optional(),
+  images: z.array(z.object({ objectKey: z.string().max(500), thumbKey: z.string().max(500).optional() })).min(1).max(9).optional()
 }).superRefine((value, ctx) => {
   const descriptionMessage = productDescriptionError(value.description);
   if (descriptionMessage) ctx.addIssue({ code: 'custom', path: ['description'], message: descriptionMessage });
@@ -97,7 +99,15 @@ function secureProductImages<T extends Record<string, any>>(product: T): T {
   };
 }
 
+async function purgeExpiredDeletedProducts(app: FastifyInstance) {
+  await app.pg.query(`DELETE FROM products WHERE deleted_at IS NOT NULL
+    AND deleted_at < NOW() - INTERVAL '15 days'`);
+}
+
 export async function productRoutes(app: FastifyInstance) {
+  // 回收站只保留 15 天；启动时立即清理，运行期间每小时再检查一次。
+  void purgeExpiredDeletedProducts(app).catch(error => app.log.error(error, '清理过期商品回收站失败'));
+  setInterval(() => void purgeExpiredDeletedProducts(app).catch(error => app.log.error(error, '清理过期商品回收站失败')), 60 * 60 * 1000).unref();
   app.get('/api/v1/categories/tree', async () => {
     const result = await app.pg.query(`SELECT id,parent_id,name,level,sort_order FROM categories
       WHERE status='ACTIVE' AND code LIKE 'TAX-V1-%' ORDER BY level,sort_order,id`);
@@ -123,10 +133,31 @@ export async function productRoutes(app: FastifyInstance) {
     const clauses = ['p.user_id=$1', 'p.deleted_at IS NULL'];
     if (query.q) { values.push(query.q); clauses.push(`p.description ILIKE '%' || $${values.length} || '%'`); }
     if (query.status) { values.push(query.status); clauses.push(`p.status=$${values.length}`); }
-    const result = await app.pg.query(`SELECT p.id,p.category_id,p.description,p.price_type,p.price,p.price_unit,p.spec_text,p.status,p.published_at,p.expires_at,
+    const result = await app.pg.query(`SELECT p.id,p.category_id,p.description,p.price_type,p.price,p.price_unit,p.spec_text,p.extra_attrs,p.status,p.published_at,p.expires_at,
       (SELECT thumb_key FROM product_images WHERE product_id=p.id ORDER BY sort_order LIMIT 1) AS cover_url
       FROM products p WHERE ${clauses.join(' AND ')} ORDER BY p.id DESC`, values);
     return { items: result.rows.map(secureProductImages) };
+  });
+
+  app.get('/api/v1/me/products/recently-deleted', async (request) => {
+    const userId = await requireUser(request);
+    await purgeExpiredDeletedProducts(app);
+    const result = await app.pg.query(`SELECT p.id,p.category_id,p.description,p.price_type,p.price,p.price_unit,p.spec_text,p.extra_attrs,p.status,p.deleted_at,
+      (SELECT thumb_key FROM product_images WHERE product_id=p.id ORDER BY sort_order LIMIT 1) AS cover_url
+      FROM products p WHERE p.user_id=$1 AND p.deleted_at IS NOT NULL
+        AND p.deleted_at >= NOW() - INTERVAL '15 days'
+      ORDER BY p.deleted_at DESC`, [userId]);
+    return { items: result.rows.map(secureProductImages) };
+  });
+
+  app.get('/api/v1/me/products/:id', async (request, reply) => {
+    const userId = await requireUser(request);
+    const id = z.coerce.number().int().positive().parse((request.params as { id: string }).id);
+    const product = await app.pg.query(`SELECT p.id,p.category_id,p.description,p.price_type,p.price,p.price_unit,p.spec_text,p.extra_attrs,p.status
+      FROM products p WHERE p.id=$1 AND p.user_id=$2 AND p.deleted_at IS NULL`, [id, userId]);
+    if (!product.rows[0]) return reply.code(404).send({ code: 'PRODUCT_NOT_FOUND', message: '商品不存在或无管理权限' });
+    const images = await app.pg.query('SELECT object_key,thumb_key,sort_order FROM product_images WHERE product_id=$1 ORDER BY sort_order', [id]);
+    return secureProductImages({ ...product.rows[0], images: images.rows });
   });
 
   app.get('/api/v1/products', async (request) => {
@@ -241,12 +272,24 @@ export async function productRoutes(app: FastifyInstance) {
       const category = await app.pg.query("SELECT id FROM categories WHERE id=$1 AND level=3 AND status='ACTIVE'", [body.categoryId]);
       if (!category.rows[0]) return reply.code(400).send({ code: 'INVALID_CATEGORY', message: '请选择有效的三级商品分类' });
     }
-    const result = await app.pg.query(`UPDATE products SET description=$1,price=$2,price_unit=$3,spec_text=$4,
-      category_id=COALESCE($5,category_id),updated_at=NOW() WHERE id=$6 AND user_id=$7 AND deleted_at IS NULL
-      RETURNING id,category_id,description,price,price_unit,spec_text,status,updated_at`,
-      [body.description, body.price, body.priceUnit ?? 'pc', body.specText ?? null, body.categoryId ?? null, id, userId]);
-    if (!result.rows[0]) return reply.code(404).send({ code: 'PRODUCT_NOT_FOUND', message: '商品不存在或无管理权限' });
-    return result.rows[0];
+    const result = await withTransaction(async (client) => {
+      const updated = await client.query(`UPDATE products SET description=$1,price=$2,price_unit=$3,spec_text=$4,
+        category_id=COALESCE($5,category_id),extra_attrs=COALESCE($6,extra_attrs),updated_at=NOW()
+        WHERE id=$7 AND user_id=$8 AND deleted_at IS NULL
+        RETURNING id,category_id,description,price,price_unit,spec_text,extra_attrs,status,updated_at`,
+        [body.description, body.price, body.priceUnit ?? 'pc', body.specText ?? null, body.categoryId ?? null, body.extraAttrs ?? null, id, userId]);
+      if (!updated.rows[0]) return null;
+      if (body.images) {
+        await client.query('DELETE FROM product_images WHERE product_id=$1', [id]);
+        for (const [index, image] of body.images.entries()) {
+          await client.query('INSERT INTO product_images (product_id,object_key,thumb_key,sort_order,is_cover) VALUES ($1,$2,$3,$4,$5)',
+            [id, image.objectKey, image.thumbKey ?? image.objectKey, index + 1, index === 0]);
+        }
+      }
+      return updated.rows[0];
+    });
+    if (!result) return reply.code(404).send({ code: 'PRODUCT_NOT_FOUND', message: '商品不存在或无管理权限' });
+    return result;
   });
 
   app.delete('/api/v1/products/:id', async (request, reply) => {
@@ -256,6 +299,19 @@ export async function productRoutes(app: FastifyInstance) {
       WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL RETURNING id`, [id, userId]);
     if (!result.rows[0]) return reply.code(404).send({ code: 'PRODUCT_NOT_FOUND', message: '商品不存在或无管理权限' });
     return { id, deleted: true };
+  });
+
+  app.post('/api/v1/products/:id/restore', async (request, reply) => {
+    const userId = await requireUser(request);
+    const id = z.coerce.number().int().positive().parse((request.params as { id: string }).id);
+    await purgeExpiredDeletedProducts(app);
+    const result = await app.pg.query(`UPDATE products SET status='PUBLISHED',deleted_at=NULL,published_at=NOW(),
+      expires_at=NOW() + INTERVAL '30 days',updated_at=NOW()
+      WHERE id=$1 AND user_id=$2 AND deleted_at IS NOT NULL
+        AND deleted_at >= NOW() - INTERVAL '15 days'
+      RETURNING id,status,published_at,expires_at`, [id, userId]);
+    if (!result.rows[0]) return reply.code(404).send({ code: 'RECYCLE_ITEM_NOT_FOUND', message: '商品已超过 15 天保留期或无恢复权限' });
+    return { ...result.rows[0], restored: true };
   });
 
   app.put('/api/v1/products/:id/favorite', async (request, reply) => {

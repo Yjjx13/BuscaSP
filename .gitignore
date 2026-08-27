@@ -10,3 +10,9 @@ coverage/
 *.tsbuildinfo
 tmp/
 output/
+
+# Local runtime uploads and raw import material. Curated demo assets use
+# descriptive names and remain versioned under apps/api/uploads.
+apps/api/uploads/[0-9a-f]*.png
+apps/api/uploads/[0-9a-f]*.jpg
+testIMP/

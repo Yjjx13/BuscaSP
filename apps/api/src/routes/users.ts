@@ -68,7 +68,7 @@ export async function userRoutes(app: FastifyInstance) {
   app.get('/api/v1/me/search-history', async (request) => {
     const userId = await requireUser(request);
     const result = await app.pg.query(`SELECT id,query_text,created_at FROM search_history
-      WHERE user_id=$1 ORDER BY created_at DESC LIMIT 10`, [userId]);
+      WHERE user_id=$1 ORDER BY created_at DESC LIMIT 15`, [userId]);
     return { items: result.rows };
   });
 
@@ -79,7 +79,7 @@ export async function userRoutes(app: FastifyInstance) {
     const created = await app.pg.query(`INSERT INTO search_history (user_id,query_text) VALUES ($1,$2)
       RETURNING id,query_text,created_at`, [userId, body.query]);
     await app.pg.query(`DELETE FROM search_history WHERE id IN (
-      SELECT id FROM search_history WHERE user_id=$1 ORDER BY created_at DESC OFFSET 10
+      SELECT id FROM search_history WHERE user_id=$1 ORDER BY created_at DESC OFFSET 15
     )`, [userId]);
     return reply.code(201).send(created.rows[0]);
   });

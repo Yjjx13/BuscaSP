@@ -1,0 +1,57 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="empty">正在加载需求详情…</view>
+  <block wx:if="{{wanted}}">
+    <view class="card demand-card">
+      <scroll-view wx:if="{{wanted.images.length}}" scroll-x class="image-row">
+        <image wx:for="{{wanted.images}}" wx:key="object_key" src="{{item.object_key}}" mode="aspectFill"/>
+      </scroll-view>
+      <view class="demand-title">{{wanted.description}}</view>
+      <view class="info-row"><text>所需数量</text><text>{{wanted.quantity}}</text></view>
+      <view class="info-row" wx:if="{{wanted.spec_text}}"><text>规格型号</text><text>{{wanted.spec_text}}</text></view>
+      <view class="info-row" wx:if="{{wanted.target_price}}"><text>目标报价</text><text>R$ {{wanted.target_price}}</text></view>
+      <view class="info-row"><text>发布者</text><text>{{wanted.nickname}}</text></view>
+      <view class="info-row" wx:if="{{wanted.region_name}}"><text>所在地区</text><text>{{wanted.region_name}}</text></view>
+      <view class="info-row"><text>发布时间</text><text>{{wanted.createdLabel}}</text></view>
+      <view class="status-line"><text class="status {{wanted.status==='ACTIVE'?'active':'closed'}}">{{wanted.statusLabel}}</text><button wx:if="{{wanted.is_owner && wanted.status==='ACTIVE'}}" size="mini" bindtap="closeWanted">更新状态</button></view>
+    </view>
+
+    <view wx:if="{{wanted.is_owner}}" class="section-title">收到的货源 <text>{{responses.length}}</text></view>
+    <view wx:elif="{{wanted.my_response_id}}" class="section-title">我的供货沟通</view>
+    <view wx:if="{{wanted.is_owner && !responses.length}}" class="empty-card">暂未收到供货响应。商家提交后会显示在这里。</view>
+    <view wx:for="{{responses}}" wx:key="id" class="card response-card">
+      <view class="response-head"><view><view class="merchant">{{item.nickname}}</view><view class="merchant-meta">{{item.region_name || '地区未设置'}} · {{item.createdLabel}}</view></view><text class="response-status status-{{item.status}}">{{item.statusLabel}}</text></view>
+      <view wx:if="{{item.product_id}}" class="linked-product" bindtap="openProduct" data-id="{{item.product_id}}"><image wx:if="{{item.product_cover_url}}" src="{{item.product_cover_url}}" mode="aspectFill"/><view><view>关联商品：{{item.product_title}}</view><text>查看商品详情 ›</text></view></view>
+      <view class="timeline-title">报价记录 · 共{{item.offers.length}}轮</view>
+      <view class="offer-timeline">
+        <view wx:for="{{item.offers}}" wx:for-item="offer" wx:key="id" class="offer-round {{offer.sender_role==='BUYER'?'buyer-round':'supplier-round'}}">
+          <view class="round-head"><text>第{{offer.round}}轮 · {{offer.senderLabel}}</text><text>{{offer.createdLabel}}</text></view>
+          <view class="round-price">R$ {{offer.offer_price}} <text>数量：{{offer.available_quantity}}</text></view>
+          <view class="stock-line"><text class="stock-badge {{offer.stock_type==='PRESALE'?'presale':'spot'}}">{{offer.stockLabel}}</text><text wx:if="{{offer.expectedLabel}}">预计可交货：{{offer.expectedLabel}}</text></view>
+          <view wx:if="{{offer.message}}" class="round-message">{{offer.message}}</view>
+        </view>
+      </view>
+      <view class="response-actions">
+        <button wx:if="{{wanted.is_owner}}" class="contact-button" bindtap="contact" data-id="{{item.id}}">{{item.has_contact ? '联系商家' : '商家未设置联系方式'}}</button>
+        <button wx:if="{{item.status==='ACTIVE' && wanted.status==='ACTIVE'}}" class="offer-button" bindtap="openOffer" data-id="{{item.id}}">{{wanted.is_owner ? '提出还价' : '追加报价'}}</button>
+        <button wx:if="{{wanted.is_owner && item.status==='ACTIVE'}}" bindtap="updateResponse" data-id="{{item.id}}" data-status="REJECTED">不合适</button>
+        <button wx:if="{{wanted.is_owner && item.status==='ACTIVE'}}" class="accept-button" bindtap="updateResponse" data-id="{{item.id}}" data-status="ACCEPTED">采纳货源</button>
+      </view>
+    </view>
+  </block>
+</view>
+
+<view wx:if="{{offerOpen}}" class="drawer-mask" bindtap="closeOffer">
+  <view class="offer-drawer" catchtap="stopBubble">
+    <view class="drawer-head"><view><view class="drawer-title">{{wanted.is_owner ? '提出新一轮还价' : '追加新一轮报价'}}</view><view class="drawer-subtitle">历史报价将完整保留，不会被覆盖</view></view><text bindtap="closeOffer">×</text></view>
+    <view class="field-label">本轮单价（R$）</view>
+    <input type="digit" placeholder="例如：25.90" data-field="offerPrice" value="{{offerForm.offerPrice}}" bindinput="onOfferInput"/>
+    <view class="field-label">本轮数量</view>
+    <input placeholder="例如：20箱或480件" data-field="availableQuantity" value="{{offerForm.availableQuantity}}" bindinput="onOfferInput"/>
+    <view class="field-label">供货状态</view>
+    <view class="stock-options"><view class="{{offerForm.stockType==='SPOT'?'selected spot':''}}" data-type="SPOT" bindtap="chooseOfferStockType">现货</view><view class="{{offerForm.stockType==='PRESALE'?'selected presale':''}}" data-type="PRESALE" bindtap="chooseOfferStockType">预售</view></view>
+    <block wx:if="{{offerForm.stockType==='PRESALE'}}"><view class="field-label">预计可交货日期</view><picker mode="date" start="{{today}}" value="{{offerForm.expectedAvailableAt}}" bindchange="onOfferDateChange"><view class="picker-field">{{offerForm.expectedAvailableAt || '请选择日期'}} <text>›</text></view></picker></block>
+    <view class="field-label">补充说明（选填）</view>
+    <textarea maxlength="300" placeholder="可填写颜色、型号、包装方式或交货条件" data-field="message" value="{{offerForm.message}}" bindinput="onOfferInput"/>
+    <button class="primary submit-offer" loading="{{submittingOffer}}" disabled="{{submittingOffer}}" bindtap="submitOffer">提交本轮报价</button>
+  </view>
+</view>
