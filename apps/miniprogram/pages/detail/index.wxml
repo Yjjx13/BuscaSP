@@ -23,15 +23,28 @@
       <view class="quote-label">商品单价</view>
       <view class="price">{{product.price_type==='NEGOTIABLE' ? '面议' : 'R$ '+product.price+(product.price_unit ? ' / '+product.price_unit : '')}}</view>
       <view class="desc">{{product.description}}</view>
+      <view class="category-line">所属分类：{{product.category_path || product.category_name || '—'}}</view>
     </view>
 
     <view class="card detail-card">
       <view class="card-title">货源信息</view>
-      <view class="info-row"><text>规格与型号</text><text>{{product.spec_text || '暂未填写'}}</text></view>
-      <view class="info-row" wx:if="{{product.extra_attrs && product.extra_attrs.piecesPerBox}}"><text>装箱数量</text><text>每箱 {{product.extra_attrs.piecesPerBox}} 个</text></view>
+      <view class="info-row"><text>规格与型号</text><text>{{product.spec_text || '—'}}</text></view>
+      <view class="info-row" wx:if="{{product.extra_attrs && product.extra_attrs.piecesPerBox}}"><text>装箱数</text><text>{{product.box_count}} pcs/cx</text></view>
       <view class="info-row" wx:if="{{product.extra_attrs && product.extra_attrs.piecesPerBox}}"><text>最低起订</text><text>{{product.extra_attrs.minCartons || 1}} 箱</text></view>
-      <view class="info-row" wx:if="{{product.quantity}}"><text>可供数量</text><text>{{product.quantity}} {{product.quantity_unit || '件'}}</text></view>
+      <view class="info-row" wx:if="{{product.quantity && !(product.extra_attrs && product.extra_attrs.piecesPerBox)}}"><text>装箱数</text><text>{{product.box_count}} pcs/cx</text></view>
       <view class="info-row"><text>商家用户名</text><text>{{product.nickname}}</text></view>
+      <view class="info-row" wx:if="{{product.region_name}}"><text>地区</text><text>{{product.region_name}}</text></view>
+    </view>
+
+    <view class="related-section" wx:if="{{related.length}}">
+      <view class="related-title">相似货源</view>
+      <view class="related-grid">
+        <view wx:for="{{related}}" wx:key="id" class="related-item" data-id="{{item.id}}" bindtap="openRelated">
+          <image src="{{item.cover_url}}" mode="aspectFill"/>
+          <view class="related-name">{{item.description}}</view>
+          <view class="related-price">{{item.price_type==='NEGOTIABLE' ? '面议' : 'R$ '+item.price}}</view>
+        </view>
+      </view>
     </view>
 
     <view class="card contact-result" wx:if="{{contact}}">

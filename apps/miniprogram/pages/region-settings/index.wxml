@@ -1,0 +1,10 @@
+<view class="page">
+  <view class="card">
+    <view class="title">商家所在地区</view>
+    <view class="hint">城市默认为 São Paulo，前台仅展示你选择的具体地区。</view>
+    <picker mode="selector" range="{{regions}}" range-key="name" value="{{regionIndex}}" bindchange="chooseRegion">
+      <view class="picker">{{regions[regionIndex].name || '请选择地区'}}<text>›</text></view>
+    </picker>
+  </view>
+  <button class="primary" loading="{{saving}}" bindtap="save">保存地区</button>
+</view>

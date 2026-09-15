@@ -4,16 +4,27 @@ import { requireUser } from '../auth.js';
 import { encrypt, maskContact } from '../crypto.js';
 
 export async function userRoutes(app: FastifyInstance) {
+  app.get('/api/v1/regions', async () => {
+    const result = await app.pg.query(`SELECT code,name,sort_order FROM sao_paulo_regions
+      WHERE status='ACTIVE' ORDER BY sort_order,code`);
+    return { city: 'São Paulo', items: result.rows };
+  });
+
   app.get('/api/v1/me', async (request) => {
     const userId = await requireUser(request);
-    const user = await app.pg.query(`SELECT id,nickname,avatar_url,region_code,contact_policy,status,created_at
-      FROM users WHERE id=$1 AND deleted_at IS NULL`, [userId]);
+    const user = await app.pg.query(`SELECT u.id,u.nickname,u.avatar_url,u.region_code,r.name AS region_name,u.contact_policy,u.status,u.created_at
+      FROM users u LEFT JOIN sao_paulo_regions r ON r.code=u.region_code
+      WHERE u.id=$1 AND u.deleted_at IS NULL`, [userId]);
     return user.rows[0];
   });
 
   app.patch('/api/v1/me', async (request, reply) => {
     const userId = await requireUser(request);
     const body = z.object({ nickname: z.string().trim().min(1).max(80).optional(), avatarUrl: z.string().url().max(500).optional(), regionCode: z.string().max(20).optional(), contactPolicy: z.enum(['PUBLIC', 'LOGIN_ONLY', 'MEMBER_ONLY', 'AFTER_INQUIRY']).optional() }).parse(request.body);
+    if (body.regionCode) {
+      const region = await app.pg.query("SELECT code FROM sao_paulo_regions WHERE code=$1 AND status='ACTIVE'", [body.regionCode]);
+      if (!region.rows[0]) return reply.code(400).send({ code: 'INVALID_REGION', message: '请选择有效的圣保罗地区' });
+    }
     const row = await app.pg.query(`UPDATE users SET nickname=COALESCE($1,nickname),avatar_url=COALESCE($2,avatar_url),region_code=COALESCE($3,region_code),contact_policy=COALESCE($4,contact_policy),updated_at=NOW() WHERE id=$5 RETURNING id,nickname,avatar_url,region_code,contact_policy`, [body.nickname ?? null, body.avatarUrl ?? null, body.regionCode ?? null, body.contactPolicy ?? null, userId]);
     if (!row.rows[0]) return reply.code(404).send({ code: 'USER_NOT_FOUND', message: '用户不存在' });
     return row.rows[0];
@@ -21,7 +32,9 @@ export async function userRoutes(app: FastifyInstance) {
 
   app.get('/api/v1/users/:id/profile', async (request, reply) => {
     const id = z.coerce.number().int().positive().parse((request.params as { id: string }).id);
-    const user = await app.pg.query(`SELECT id,nickname,avatar_url,region_code,created_at FROM users WHERE id=$1 AND status='ACTIVE' AND deleted_at IS NULL`, [id]);
+    const user = await app.pg.query(`SELECT u.id,u.nickname,u.avatar_url,u.region_code,r.name AS region_name,u.created_at
+      FROM users u LEFT JOIN sao_paulo_regions r ON r.code=u.region_code
+      WHERE u.id=$1 AND u.status='ACTIVE' AND u.deleted_at IS NULL`, [id]);
     if (!user.rows[0]) return reply.code(404).send({ code: 'USER_NOT_FOUND', message: '发布者不存在' });
     const products = await app.pg.query(`SELECT id,description,price_type,price,price_unit,published_at,
       (SELECT thumb_key FROM product_images WHERE product_id=products.id ORDER BY sort_order LIMIT 1) AS cover_url
@@ -55,7 +68,7 @@ export async function userRoutes(app: FastifyInstance) {
   app.get('/api/v1/me/search-history', async (request) => {
     const userId = await requireUser(request);
     const result = await app.pg.query(`SELECT id,query_text,created_at FROM search_history
-      WHERE user_id=$1 ORDER BY created_at DESC LIMIT 10`, [userId]);
+      WHERE user_id=$1 ORDER BY created_at DESC LIMIT 15`, [userId]);
     return { items: result.rows };
   });
 
@@ -66,7 +79,7 @@ export async function userRoutes(app: FastifyInstance) {
     const created = await app.pg.query(`INSERT INTO search_history (user_id,query_text) VALUES ($1,$2)
       RETURNING id,query_text,created_at`, [userId, body.query]);
     await app.pg.query(`DELETE FROM search_history WHERE id IN (
-      SELECT id FROM search_history WHERE user_id=$1 ORDER BY created_at DESC OFFSET 10
+      SELECT id FROM search_history WHERE user_id=$1 ORDER BY created_at DESC OFFSET 15
     )`, [userId]);
     return reply.code(201).send(created.rows[0]);
   });

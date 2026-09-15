@@ -9,22 +9,19 @@ function request(options) {
 }
 
 Page({
-  data: { q: '', items: [], history: [], suggestions: [], categoryId: '', categoryName: '' },
+  data: { q: '', items: [], history: [], suggestions: [], searched: false, loading: false },
 
-  onLoad(query) {
-    if (query.categoryId) {
-      this.setData({ categoryId: query.categoryId, categoryName: decodeURIComponent(query.categoryName || '') });
-      this.search();
-    }
-  },
   onShow() { this.loadHistory(); },
   onUnload() { if (this.suggestionTimer) clearTimeout(this.suggestionTimer); },
 
   onInput(event) {
     const query = event.detail.value;
-    this.setData({ q: query });
+    this.setData({ q: query, searched: false });
     if (this.suggestionTimer) clearTimeout(this.suggestionTimer);
-    if (!query.trim()) return this.setData({ suggestions: [] });
+    if (!query.trim()) {
+      this.setData({ suggestions: [], items: [] });
+      return;
+    }
     this.suggestionTimer = setTimeout(() => this.loadSuggestions(query), 180);
   },
 
@@ -46,9 +43,17 @@ Page({
   async search(event) {
     const query = (event?.currentTarget?.dataset?.query || this.data.q).trim();
     this.setData({ q: query, suggestions: [] });
-    const categoryPart = this.data.categoryId ? '&categoryId=' + this.data.categoryId : '';
-    wx.request({ url: app.globalData.apiBaseUrl + '/api/v1/products?q=' + encodeURIComponent(query) + categoryPart, success: async response => this.setData({ items: await app.localizeProducts(response.data.items || []) }) });
-    if (!query) return;
+    // 空关键词只展示搜索历史，避免把全站商品误当作搜索结果。
+    if (!query) {
+      this.setData({ items: [] });
+      return;
+    }
+    this.setData({ loading: true, searched: false });
+    wx.request({ url: app.globalData.apiBaseUrl + '/api/v1/products?q=' + encodeURIComponent(query), success: async response => {
+      if (response.statusCode >= 300) { this.setData({ loading: false }); return wx.showToast({ title: '搜索失败，请重试', icon: 'none' }); }
+      const items = await app.localizeProducts(response.data.items || []);
+      if (this.data.q === query) this.setData({ items, searched: true, loading: false });
+    }, fail: () => { this.setData({ loading: false }); wx.showToast({ title: '搜索失败，请重试', icon: 'none' }); } });
     try {
       await app.ensureLogin();
       await request({ url: app.globalData.apiBaseUrl + '/api/v1/me/search-history', method: 'POST', header: { Authorization: 'Bearer ' + app.globalData.token }, data: { query } });
@@ -65,5 +70,6 @@ Page({
     } catch (_) { wx.showToast({ title: '清空失败，请重试', icon: 'none' }); }
   },
 
-  detail(event) { wx.navigateTo({ url: '/pages/detail/index?id=' + event.currentTarget.dataset.id }); }
+  detail(event) { wx.navigateTo({ url: '/pages/detail/index?id=' + event.currentTarget.dataset.id }); },
+  createWanted() { wx.navigateTo({ url: '/pages/wanted-create/index?q=' + encodeURIComponent(this.data.q.trim()) }); }
 });

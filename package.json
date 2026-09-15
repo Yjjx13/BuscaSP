@@ -2,11 +2,13 @@
   "name": "buscasp",
   "private": true,
   "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "pnpm": "9.15.4"
+  },
   "scripts": {
-    "dev:api": "pnpm --filter @buscasp/api dev",
-    "dev:admin": "pnpm --filter @buscasp/admin dev",
-    "test": "pnpm -r test",
-    "typecheck": "pnpm -r typecheck"
+    "dev:api": "corepack pnpm --filter @buscasp/api dev",
+    "dev:admin": "corepack pnpm --filter @buscasp/admin dev",
+    "test": "corepack pnpm -r test",
+    "typecheck": "corepack pnpm -r typecheck"
   }
 }
-

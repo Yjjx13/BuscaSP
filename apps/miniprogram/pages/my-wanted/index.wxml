@@ -1,0 +1,10 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="empty">正在加载我的找货需求…</view>
+  <view wx:for="{{items}}" wx:key="id" class="card history-card" bindtap="openDetail" data-id="{{item.id}}">
+    <view class="card-main"><image wx:if="{{item.cover_url}}" src="{{item.cover_url}}" mode="aspectFill"/><view class="card-content"><view class="title">{{item.description || '图片找货需求'}}</view><view class="status-text">{{item.status==='ACTIVE' ? '找货中' : item.status==='FOUND' ? '已找到货' : item.status==='CLOSED' ? '已关闭' : '已过期'}}</view></view></view>
+    <view class="row"><text>收到的货源</text><text class="response-count">{{item.response_count || 0}} 条 <text wx:if="{{item.unread_response_count}}" class="unread">{{item.unread_response_count}} 条未读</text></text></view>
+    <view class="row"><text>创建时间</text><text>{{item.created_at}}</text></view>
+    <view class="detail-link">查看需求和供货响应 ›</view>
+  </view>
+  <view wx:if="{{!loading && !items.length}}" class="empty">暂未发布找货需求。</view>
+</view>
