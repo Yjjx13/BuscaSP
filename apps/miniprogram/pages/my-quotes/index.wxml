@@ -1,0 +1,9 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="muted">正在加载报价…</view>
+  <view wx:elif="{{error}}" class="card"><text>{{error}}</text><button bindtap="load">重新加载</button></view>
+  <view wx:elif="{{!items.length}}" class="card"><view>还没有提交报价</view><button class="primary" bindtap="market">去需求市场看看</button></view>
+  <view wx:for="{{items}}" wx:key="id" class="card quote" data-id="{{item.wanted_post_id}}" bindtap="detail">
+    <image wx:if="{{item.cover_url}}" src="{{item.cover_url}}" mode="aspectFill"/>
+    <view class="copy"><view>{{item.wanted_description}}</view><view class="price">我的最新报价 R$ {{item.supplier_price}}</view><view class="muted">{{item.statusLabel}} · {{item.wantedLabel}}</view><view class="muted">{{item.timeLabel}}　查看沟通 ›</view></view>
+  </view>
+</view>

@@ -11,6 +11,8 @@
     <view class="history-tags"><view wx:for="{{history}}" wx:key="id" class="history-tag" data-query="{{item.query_text}}" bindtap="search">{{item.query_text}}</view></view>
   </view>
   <view class="result-title" wx:if="{{items.length}}">搜索结果</view>
+  <view wx:if="{{loading}}" class="muted">正在搜索…</view>
+  <view wx:if="{{searched && !loading && !items.length}}" class="card"><view>没有找到合适的商品？</view><button class="primary" bindtap="createWanted">发布需求，让商家联系我</button></view>
   <view class="product-grid">
     <view wx:for="{{items}}" wx:key="id" class="product" bindtap="detail" data-id="{{item.id}}">
       <image src="{{item.cover_url}}" mode="widthFix"/>

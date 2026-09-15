@@ -1,7 +1,7 @@
 const app = getApp();
 Page({
   data: {
-    q: '', items: [], loading: false, responseOpen: false, selectedWanted: null,
+    q: '', items: [], loading: false, responseOpen: false, selectedWanted: null, moreOpen: false,
     responseForm: { productId: null, offerPrice: '', availableQuantity: '', stockType: 'SPOT', expectedAvailableAt: '', message: '' },
     myProductOptions: [{ id: null, label: '不关联商品' }], productIndex: 0, selectedProduct: null,
     today: new Date().toISOString().slice(0, 10), submitting: false
@@ -28,11 +28,17 @@ Page({
     try { await app.ensureLogin(); } catch (_) { return; }
     await this.loadMyProducts();
     const selectedWanted = this.data.items.find(item => String(item.id) === String(e.currentTarget.dataset.id));
+    if (!selectedWanted) return;
+    if (Number(selectedWanted.user_id) === Number(app.globalData.user && app.globalData.user.id)) {
+      wx.navigateTo({ url: '/pages/wanted-detail/index?id=' + selectedWanted.id });
+      return;
+    }
     const existing = selectedWanted.my_response;
     const productIndex = existing && existing.product_id
       ? Math.max(0, this.data.myProductOptions.findIndex(item => String(item.id) === String(existing.product_id))) : 0;
     this.setData({
       responseOpen: true,
+      moreOpen: false,
       selectedWanted,
       productIndex,
       selectedProduct: this.data.myProductOptions[productIndex].product || null,
@@ -61,11 +67,15 @@ Page({
   },
   closeResponse() { if (!this.data.submitting) this.setData({ responseOpen: false }); },
   stopBubble() {},
+  toggleMore() { this.setData({ moreOpen: !this.data.moreOpen }); },
   onResponseInput(e) { this.setData({ ['responseForm.' + e.currentTarget.dataset.field]: e.detail.value }); },
   onProductChange(e) {
     const productIndex = Number(e.detail.value);
     const option = this.data.myProductOptions[productIndex];
     this.setData({ productIndex, selectedProduct: option.product || null, 'responseForm.productId': option.id || null });
+    if (option.product && option.product.price_type !== 'NEGOTIABLE' && !this.data.responseForm.offerPrice.trim()) {
+      this.setData({ 'responseForm.offerPrice': String(option.product.price) });
+    }
   },
   chooseStockType(e) {
     const stockType = e.currentTarget.dataset.type;
@@ -73,6 +83,7 @@ Page({
   },
   onExpectedDateChange(e) { this.setData({ 'responseForm.expectedAvailableAt': e.detail.value }); },
   submitResponse() {
+    if (this.data.submitting) return;
     const form = this.data.responseForm;
     if (!form.availableQuantity.trim()) return wx.showToast({ title: '请填写可供数量', icon: 'none' });
     const offerPrice = form.offerPrice.trim();
@@ -95,7 +106,7 @@ Page({
         if (response.statusCode >= 300) return wx.showToast({ title: response.data.message || '提交供货响应失败', icon: 'none' });
         this.setData({ responseOpen: false });
         this.loadMyResponses();
-        wx.showModal({ title: this.data.selectedWanted.has_responded ? '新一轮报价已提交' : '供货响应已提交', content: '找货方可以在“我的找货需求”中查看完整报价记录。请确认已在“我的”页面设置联系方式。', showCancel: false });
+        wx.showModal({ title: '报价已提交', content: '买家会在“我的需求”中收到报价。您可以从“我的报价”继续查看沟通，联系方式请在“我的 → 资料设置”中填写。', showCancel: false });
       },
       fail: () => wx.showToast({ title: '网络异常，请稍后重试', icon: 'none' }),
       complete: () => this.setData({ submitting: false })

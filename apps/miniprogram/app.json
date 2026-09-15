@@ -1,8 +1,8 @@
 {
-  "pages": ["pages/home/index", "pages/search/index", "pages/publish/index", "pages/product-create/index", "pages/categories/index", "pages/wanted/index", "pages/wanted-create/index", "pages/wanted-detail/index", "pages/me/index", "pages/my-products/index", "pages/my-wanted/index", "pages/my-favorites/index", "pages/contact-settings/index", "pages/region-settings/index", "pages/detail/index"],
+  "pages": ["pages/home/index", "pages/search/index", "pages/publish/index", "pages/product-create/index", "pages/categories/index", "pages/wanted/index", "pages/wanted-create/index", "pages/wanted-detail/index", "pages/me/index", "pages/my-products/index", "pages/my-wanted/index", "pages/my-quotes/index", "pages/my-favorites/index", "pages/contact-settings/index", "pages/region-settings/index", "pages/detail/index"],
   "window": { "navigationBarTitleText": "BuscaSP 找货", "navigationBarBackgroundColor": "#ffffff", "navigationBarTextStyle": "black", "backgroundColor": "#f5f8fa" },
   "subPackages": [],
   "tabBar": { "color": "#667085", "selectedColor": "#176B87", "list": [
-    { "pagePath": "pages/home/index", "text": "首页" }, { "pagePath": "pages/search/index", "text": "找货" }, { "pagePath": "pages/publish/index", "text": "发布" }, { "pagePath": "pages/categories/index", "text": "分类" }, { "pagePath": "pages/me/index", "text": "我的" }
+    { "pagePath": "pages/home/index", "text": "货源" }, { "pagePath": "pages/wanted/index", "text": "需求" }, { "pagePath": "pages/publish/index", "text": "发布" }, { "pagePath": "pages/me/index", "text": "我的" }
   ] }
 }

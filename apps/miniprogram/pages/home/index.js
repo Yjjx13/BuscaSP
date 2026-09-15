@@ -23,8 +23,8 @@ Page({
     this.setData({ activeCategoryId: id });
     this.loadProducts();
   },
-  goSearch() { wx.switchTab({ url: '/pages/search/index' }); },
+  goSearch() { wx.navigateTo({ url: '/pages/search/index' }); },
+  goCategories() { wx.navigateTo({ url: '/pages/categories/index' }); },
   goPublish() { wx.switchTab({ url: '/pages/publish/index' }); },
-  goWanted() { wx.navigateTo({ url: '/pages/wanted/index' }); },
   goDetail(event) { wx.navigateTo({ url: '/pages/detail/index?id=' + event.currentTarget.dataset.id }); }
 });

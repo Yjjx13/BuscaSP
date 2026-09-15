@@ -1,0 +1,1 @@
+.quote{display:flex;gap:20rpx}.quote image{width:140rpx;height:140rpx;flex:none;border-radius:12rpx}.copy{min-width:0;line-height:1.6;overflow-wrap:anywhere}.price{color:#d92d20;font-weight:600;margin:12rpx 0}.card button{margin-top:24rpx}

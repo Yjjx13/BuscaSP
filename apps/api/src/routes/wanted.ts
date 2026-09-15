@@ -63,9 +63,13 @@ export async function wantedRoutes(app: FastifyInstance) {
   });
   app.get('/api/v1/me/wanted-responses', async (request) => {
     const userId = await requireUser(request);
-    const result = await app.pg.query(`SELECT id,wanted_post_id,product_id,message,offer_price,available_quantity,stock_type,expected_available_at,status,created_at,updated_at
-      FROM wanted_responses WHERE responder_user_id=$1 AND status <> 'WITHDRAWN'
-      ORDER BY updated_at DESC,id DESC`, [userId]);
+    const result = await app.pg.query(`SELECT wr.*,w.description AS wanted_description,w.status AS wanted_status,w.expires_at,
+      COALESCE((SELECT o.offer_price FROM wanted_response_offers o WHERE o.wanted_response_id=wr.id
+        AND o.sender_user_id=wr.responder_user_id ORDER BY o.created_at DESC,o.id DESC LIMIT 1),wr.offer_price) AS supplier_price,
+      (SELECT wi.object_key FROM wanted_images wi WHERE wi.wanted_post_id=w.id ORDER BY wi.sort_order LIMIT 1) AS cover_url
+      FROM wanted_responses wr JOIN wanted_posts w ON w.id=wr.wanted_post_id
+      WHERE wr.responder_user_id=$1 AND wr.status <> 'WITHDRAWN' AND w.deleted_at IS NULL
+      ORDER BY wr.updated_at DESC,wr.id DESC`, [userId]);
     return { items: result.rows };
   });
   app.get('/api/v1/wanted-posts', async (request) => {
@@ -208,12 +212,27 @@ export async function wantedRoutes(app: FastifyInstance) {
     const userId = await requireUser(request);
     const id = z.coerce.number().int().positive().parse((request.params as { id: string }).id);
     const body = z.object({ status: z.enum(['ACCEPTED', 'REJECTED']) }).parse(request.body);
-    const result = await app.pg.query(`UPDATE wanted_responses wr SET status=$1,read_at=COALESCE(read_at,NOW()),updated_at=NOW()
-      FROM wanted_posts w WHERE wr.id=$2 AND w.id=wr.wanted_post_id AND w.user_id=$3 AND w.deleted_at IS NULL
-      RETURNING wr.*`, [body.status, id, userId]);
-    if (!result.rows[0]) return reply.code(404).send({ code: 'RESPONSE_NOT_FOUND', message: '供货响应不存在或无权操作' });
-    if (body.status === 'ACCEPTED') await app.pg.query(`UPDATE wanted_posts SET status='FOUND',updated_at=NOW() WHERE id=$1`, [result.rows[0].wanted_post_id]);
-    return result.rows[0];
+    const client = await app.pg.connect();
+    try {
+      await client.query('BEGIN');
+      const owned = await client.query(`SELECT wr.id,wr.status,w.id AS wanted_id,w.status AS wanted_status,w.expires_at
+        FROM wanted_responses wr JOIN wanted_posts w ON w.id=wr.wanted_post_id
+        WHERE wr.id=$1 AND w.user_id=$2 AND w.deleted_at IS NULL FOR UPDATE OF w,wr`, [id, userId]);
+      const item = owned.rows[0];
+      if (!item) {
+        await client.query('ROLLBACK');
+        return reply.code(404).send({ code: 'RESPONSE_NOT_FOUND', message: '报价不存在或无权操作' });
+      }
+      if (item.status !== 'ACTIVE' || item.wanted_status !== 'ACTIVE' || new Date(item.expires_at) <= new Date()) {
+        await client.query('ROLLBACK');
+        return reply.code(409).send({ code: 'WANTED_CLOSED', message: '需求或报价已结束，请刷新后查看' });
+      }
+      const result = await client.query(`UPDATE wanted_responses SET status=$1,read_at=COALESCE(read_at,NOW()),updated_at=NOW() WHERE id=$2 RETURNING *`, [body.status, id]);
+      if (body.status === 'ACCEPTED') await client.query(`UPDATE wanted_posts SET status='FOUND',updated_at=NOW() WHERE id=$1`, [item.wanted_id]);
+      await client.query('COMMIT');
+      return result.rows[0];
+    } catch (error) { await client.query('ROLLBACK'); throw error; }
+    finally { client.release(); }
   });
 
   app.patch('/api/v1/wanted-posts/:id/status', async (request, reply) => {

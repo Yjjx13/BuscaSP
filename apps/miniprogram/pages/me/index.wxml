@@ -1,9 +1,12 @@
 <view class="page">
-  <view class="card user"><view class="avatar">货</view><view><view class="name">{{user.nickname||'找货用户'}}</view><view class="muted">统一发布与找货身份</view></view></view>
-  <view class="counts"><view bindtap="goWantedHistory"><strong>{{wanted.length}}</strong><text>我的找货需求</text><text wx:if="{{unreadWanted}}" class="unread-badge">{{unreadWanted}}条新货源</text></view><view bindtap="goFavorites"><strong>{{favorites.length}}</strong><text>我的收藏</text></view></view>
-  <view class="card setting" bindtap="goRegionSettings"><view><view class="title">所在地区</view><view class="muted">{{user.region_name || '请选择商家所在的圣保罗地区'}}</view></view><text>›</text></view>
-  <view class="card setting" bindtap="goContacts"><view><view class="title">联系方式设置</view><view class="muted">设置后，其他用户可在商品详情中联系你</view></view><text>›</text></view>
-  <view class="card setting" bindtap="goMyProducts"><view><view class="title">管理我的商品</view><view class="muted">查询、编辑、上下架或删除已发布商品</view></view><text>›</text></view>
-  <view class="card setting" bindtap="goWantedHistory"><view><view class="title">我的找货需求 <text wx:if="{{unreadWanted}}" class="inline-badge">{{unreadWanted}}</text></view><view class="muted">查看需求状态、商家报价及联系方式</view></view><text>›</text></view>
-  <view class="card setting" bindtap="goFavorites"><view><view class="title">我的收藏</view><view class="muted">查看已收藏的货源</view></view><text>›</text></view>
+  <view class="card user"><view class="avatar">货</view><view><view class="name">{{user.nickname || '找货用户'}}</view><view class="muted">{{user.region_name || '请选择所在地区'}}</view></view></view>
+  <view class="card setting" bindtap="goMyProducts"><view><view class="title">我的商品</view><view class="muted">编辑、上下架与最近删除</view></view><text>›</text></view>
+  <view class="card setting" bindtap="goWantedHistory"><view><view class="title">我的需求 <text wx:if="{{unreadWanted}}" class="inline-badge">{{unreadWanted}} 条新报价</text></view><view class="muted">查看收到的报价与找货进度</view></view><text>›</text></view>
+  <view class="card setting" bindtap="goQuotes"><view><view class="title">我的报价</view><view class="muted">查看我回应过的需求</view></view><text>›</text></view>
+  <view class="card setting" bindtap="goFavorites"><view class="title">我的收藏（{{favorites.length}}）</view><text>›</text></view>
+  <view class="card setting" bindtap="toggleSettings"><view class="title">资料设置</view><text>{{settingsOpen ? '收起' : '展开'}}</text></view>
+  <block wx:if="{{settingsOpen}}">
+    <view class="card setting" bindtap="goContacts"><view><view class="title">联系方式</view><view class="muted">供买家和商家联系您</view></view><text>›</text></view>
+    <view class="card setting" bindtap="goRegionSettings"><view class="title">所在地区：{{user.region_name || '未设置'}}</view><text>›</text></view>
+  </block>
 </view>

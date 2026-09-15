@@ -21,8 +21,14 @@
     <view wx:for="{{responses}}" wx:key="id" class="card response-card">
       <view class="response-head"><view><view class="merchant">{{item.nickname}}</view><view class="merchant-meta">{{item.region_name || '地区未设置'}} · {{item.createdLabel}}</view></view><text class="response-status status-{{item.status}}">{{item.statusLabel}}</text></view>
       <view wx:if="{{item.product_id}}" class="linked-product" bindtap="openProduct" data-id="{{item.product_id}}"><image wx:if="{{item.product_cover_url}}" src="{{item.product_cover_url}}" mode="aspectFill"/><view><view>关联商品：{{item.product_title}}</view><text>查看商品详情 ›</text></view></view>
-      <view class="timeline-title">报价记录 · 共{{item.offers.length}}轮</view>
-      <view class="offer-timeline">
+      <view wx:if="{{item.latestSupplier}}" class="latest-quote">
+        <view class="muted">商家最新报价</view>
+        <view class="round-price">R$ {{item.latestSupplier.offer_price}}<text>数量：{{item.latestSupplier.available_quantity}}</text></view>
+        <view class="stock-line">{{item.latestSupplier.stock_type === 'PRESALE' ? '预售' : '现货'}}<text wx:if="{{item.latestSupplier.expectedLabel}}">预计交货：{{item.latestSupplier.expectedLabel}}</text></view>
+      </view>
+      <view wx:if="{{item.latestBuyer}}" class="muted">买家最新还价：R$ {{item.latestBuyer.offer_price}}</view>
+      <view class="more-toggle" bindtap="toggleHistory" data-id="{{item.id}}">{{item.expanded ? '收起报价历史' : '查看报价历史'}}（{{item.offers.length}}轮）</view>
+      <view wx:if="{{item.expanded}}" class="offer-timeline">
         <view wx:for="{{item.offers}}" wx:for-item="offer" wx:key="id" class="offer-round {{offer.sender_role==='BUYER'?'buyer-round':'supplier-round'}}">
           <view class="round-head"><text>第{{offer.round}}轮 · {{offer.senderLabel}}</text><text>{{offer.createdLabel}}</text></view>
           <view class="round-price">R$ {{offer.offer_price}} <text>数量：{{offer.available_quantity}}</text></view>
@@ -32,9 +38,7 @@
       </view>
       <view class="response-actions">
         <button wx:if="{{wanted.is_owner}}" class="contact-button" bindtap="contact" data-id="{{item.id}}">{{item.has_contact ? '联系商家' : '商家未设置联系方式'}}</button>
-        <button wx:if="{{item.status==='ACTIVE' && wanted.status==='ACTIVE'}}" class="offer-button" bindtap="openOffer" data-id="{{item.id}}">{{wanted.is_owner ? '提出还价' : '追加报价'}}</button>
-        <button wx:if="{{wanted.is_owner && item.status==='ACTIVE'}}" bindtap="updateResponse" data-id="{{item.id}}" data-status="REJECTED">不合适</button>
-        <button wx:if="{{wanted.is_owner && item.status==='ACTIVE'}}" class="accept-button" bindtap="updateResponse" data-id="{{item.id}}" data-status="ACCEPTED">采纳货源</button>
+        <button wx:if="{{item.status==='ACTIVE' && wanted.canRespond}}" bindtap="moreActions" data-id="{{item.id}}">{{wanted.is_owner ? '更多操作' : '修改报价'}}</button>
       </view>
     </view>
   </block>

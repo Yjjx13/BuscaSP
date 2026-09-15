@@ -6,6 +6,10 @@ page {
   font-size: 28rpx;
 }
 
+.more-toggle{padding:24rpx 0;color:#176b87;font-size:26rpx;min-height:76rpx}
+.latest-quote{padding:20rpx 0;line-height:1.6}
+.response-actions .contact-button{background:#176b87;color:#fff;flex:2}
+
 view, text, input, textarea, button, image {
   box-sizing: border-box;
 }

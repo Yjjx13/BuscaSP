@@ -19,9 +19,6 @@
   <view class="response-drawer" catchtap="stopBubble">
     <view class="drawer-head"><view><view class="drawer-title">{{selectedWanted.has_responded ? '追加一轮报价' : '提交供货响应'}}</view><view class="drawer-subtitle">{{selectedWanted.has_responded ? '新报价会追加到历史记录，不会覆盖上一轮' : '让找货方清楚了解你能提供的货源'}}</view></view><text bindtap="closeResponse">×</text></view>
     <view class="demand-summary">{{selectedWanted.description}}</view>
-    <view class="field-label">关联我的商品 <text class="optional">选填</text></view>
-    <picker mode="selector" range="{{myProductOptions}}" range-key="label" value="{{productIndex}}" bindchange="onProductChange"><view class="picker-field">{{myProductOptions[productIndex].label}} <text>›</text></view></picker>
-    <view wx:if="{{selectedProduct}}" class="selected-product"><image wx:if="{{selectedProduct.cover_url}}" src="{{selectedProduct.cover_url}}" mode="aspectFill"/><view><view>{{selectedProduct.description}}</view><text>{{selectedProduct.spec_text || '规格未填写'}} · R$ {{selectedProduct.price}}</text></view></view>
     <view class="field-label">商品单价（R$）<text>必填</text></view>
     <input type="digit" placeholder="例如：25.90" data-field="offerPrice" value="{{responseForm.offerPrice}}" bindinput="onResponseInput"/>
     <view class="field-label">可供数量 <text>必填</text></view>
@@ -29,8 +26,14 @@
     <view class="field-label">供货状态 <text>必填</text></view>
     <view class="stock-options"><view class="{{responseForm.stockType==='SPOT'?'selected spot':''}}" data-type="SPOT" bindtap="chooseStockType">现货</view><view class="{{responseForm.stockType==='PRESALE'?'selected presale':''}}" data-type="PRESALE" bindtap="chooseStockType">预售</view></view>
     <block wx:if="{{responseForm.stockType==='PRESALE'}}"><view class="field-label">预计可交货日期 <text>必填</text></view><picker mode="date" start="{{today}}" value="{{responseForm.expectedAvailableAt}}" bindchange="onExpectedDateChange"><view class="picker-field">{{responseForm.expectedAvailableAt || '请选择日期'}} <text>›</text></view></picker></block>
+    <view class="more-toggle" bindtap="toggleMore">{{moreOpen ? '收起选填信息' : '关联商品或补充说明（选填）'}}</view>
+    <view hidden="{{!moreOpen}}">
+    <view class="field-label">关联我的商品 <text class="optional">选填</text></view>
+    <picker mode="selector" range="{{myProductOptions}}" range-key="label" value="{{productIndex}}" bindchange="onProductChange"><view class="picker-field">{{myProductOptions[productIndex].label}} <text>›</text></view></picker>
+    <view wx:if="{{selectedProduct}}" class="selected-product"><image wx:if="{{selectedProduct.cover_url}}" src="{{selectedProduct.cover_url}}" mode="aspectFill"/><view><view>{{selectedProduct.description}}</view><text>{{selectedProduct.spec_text || '规格未填写'}} · R$ {{selectedProduct.price}}</text></view></view>
     <view class="field-label">供货说明 <text class="optional">选填</text></view>
     <textarea maxlength="300" placeholder="可补充颜色、型号、包装方式或交货条件" data-field="message" value="{{responseForm.message}}" bindinput="onResponseInput"/>
+    </view>
     <button class="primary submit-response" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submitResponse">{{selectedWanted.has_responded ? '提交新一轮报价' : '确认提交'}}</button>
   </view>
 </view>

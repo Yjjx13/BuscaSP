@@ -1,4 +1,5 @@
 const app = getApp();
+const { summarizeOffers } = require('../../utils/quote-summary');
 
 function request(path, options = {}) {
   return new Promise((resolve, reject) => wx.request({
@@ -33,10 +34,11 @@ Page({
       this.setData({ loading: true });
       await app.ensureLogin();
       const wanted = await request('/api/v1/wanted-posts/' + this.wantedId);
-      wanted.statusLabel = statusLabel(wanted.status);
+      wanted.canRespond = wanted.status === 'ACTIVE' && new Date(wanted.expires_at).getTime() > Date.now();
+      wanted.statusLabel = wanted.status === 'ACTIVE' && !wanted.canRespond ? '已到期' : statusLabel(wanted.status);
       wanted.createdLabel = String(wanted.created_at || '').replace('T', ' ').slice(0, 16);
       wanted.images = await Promise.all((wanted.images || []).map(async image => ({ ...image, object_key: await app.localImage(image.object_key) })));
-      this.setData({ wanted });
+      this.setData({ wanted, responses: [] });
       if (wanted.is_owner) await this.loadResponses();
       else if (wanted.my_response_id) await this.loadMyResponse(wanted.my_response_id);
     } catch (error) {
@@ -65,9 +67,11 @@ Page({
     const isOwner = Boolean(this.data.wanted && this.data.wanted.is_owner);
     return Promise.all(items.map(async item => ({
       ...item,
+      ...summarizeOffers(item.offers),
+      expanded: false,
       product_cover_url: await app.localImage(item.product_cover_url),
       createdLabel: String(item.created_at || '').replace('T', ' ').slice(0, 16),
-      statusLabel: item.status === 'ACCEPTED' ? '已采纳' : item.status === 'REJECTED' ? '不合适' : '洽谈中',
+      statusLabel: item.status === 'ACCEPTED' ? '已选择' : item.status === 'REJECTED' ? '不合适' : '待处理',
       offers: (item.offers || []).map((offer, index) => ({
         ...offer,
         round: index + 1,
@@ -86,11 +90,23 @@ Page({
     if (id) wx.navigateTo({ url: '/pages/detail/index?id=' + id });
   },
 
+  toggleHistory(e) {
+    this.setData({ responses: this.data.responses.map(item => String(item.id) === String(e.currentTarget.dataset.id) ? { ...item, expanded: !item.expanded } : item) });
+  },
+  moreActions(e) {
+    const id = e.currentTarget.dataset.id;
+    const owner = this.data.wanted.is_owner;
+    wx.showActionSheet({ itemList: owner ? ['提出还价', '标记不合适', '已找到货'] : ['修改报价'], success: r => {
+      if (r.tapIndex === 0) this.openOffer({ currentTarget: { dataset: { id } } });
+      else this.updateResponse({ currentTarget: { dataset: { id, status: r.tapIndex === 1 ? 'REJECTED' : 'ACCEPTED' } } });
+    } });
+  },
+
   async updateResponse(e) {
     const { id, status } = e.currentTarget.dataset;
-    const actionText = status === 'ACCEPTED' ? '采纳该货源并将需求标记为已找到货' : '将该货源标记为不合适';
+    const actionText = status === 'ACCEPTED' ? '确认已找到货后，此需求将退出市场，不再接收新报价。已有报价仍可查看，这不代表已付款或成交' : '将该货源标记为不合适';
     wx.showModal({
-      title: status === 'ACCEPTED' ? '确认采纳' : '确认标记', content: actionText + '？',
+      title: status === 'ACCEPTED' ? '确认已找到货' : '确认标记', content: actionText + '？',
       success: async result => {
         if (!result.confirm) return;
         try {
@@ -146,6 +162,7 @@ Page({
   },
   onOfferDateChange(e) { this.setData({ 'offerForm.expectedAvailableAt': e.detail.value }); },
   async submitOffer() {
+    if (this.data.submittingOffer) return;
     const form = this.data.offerForm;
     const price = Number(form.offerPrice);
     if (!form.offerPrice.trim() || !Number.isFinite(price) || price < 0) return wx.showToast({ title: '请填写正确的本轮报价', icon: 'none' });
@@ -176,6 +193,8 @@ Page({
       itemList: ['标记为已找到货', '关闭该需求'],
       success: async result => {
         const status = result.tapIndex === 0 ? 'FOUND' : 'CLOSED';
+        const confirmation = await new Promise(resolve => wx.showModal({ title: '结束需求', content: '确认后将退出需求市场，不再接收新报价。已有报价仍可查看。', success: resolve, fail: () => resolve({ confirm: false }) }));
+        if (!confirmation.confirm) return;
         try {
           await request('/api/v1/wanted-posts/' + this.wantedId + '/status', { method: 'PATCH', data: { status } });
           wx.showToast({ title: '需求状态已更新', icon: 'success' });

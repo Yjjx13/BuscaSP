@@ -5,8 +5,7 @@
   <view class="home-content">
     <view class="actions">
       <view class="action" bindtap="goPublish">＋<text>发布货源</text></view>
-      <view class="action" bindtap="goWanted">⌁<text>找货需求</text></view>
-      <view class="action" bindtap="goSearch">▣<text>拍照找货</text></view>
+      <view class="action" bindtap="goCategories">▣<text>全部分类</text></view>
     </view>
     <scroll-view class="category-tabs" scroll-x enable-flex>
       <view wx:for="{{categories}}" wx:key="id" class="category-tab {{activeCategoryId===item.id?'active':''}}" data-id="{{item.id}}" bindtap="chooseCategory">{{item.name}}</view>
